@@ -29,11 +29,7 @@ jobs:
 
     - name: Run PyInstaller Build
       run: |
-        pyinstaller --noconsole --onefile --icon=resources/tododo.ico --add-data "resources;resources" main.py
-
-    - name: Rename EXE
-      run: |
-        mv dist/main.exe dist/Tododo.exe
+        pyinstaller --noconsole --onefile --name Tododo --icon=resources/tododo.ico --add-data "resources;resources" main.py
 
     - name: Create Release
       uses: softprops/action-gh-release@v2

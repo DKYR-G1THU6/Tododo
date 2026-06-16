@@ -92,7 +92,7 @@ python main.py
 ### 4. 打包成 .exe（可选）
 ```bash
 # 本地打包生成 Tododo.exe
-pyinstaller --noconsole --onefile --icon=resources/tododo.ico --add-data "resources;resources" main.py
+pyinstaller --noconsole --onefile --name Tododo --icon=resources/tododo.ico --add-data "resources;resources" main.py
 ```
 
 ## 📖 使用说明
