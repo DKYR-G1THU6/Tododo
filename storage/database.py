@@ -16,6 +16,11 @@ class Database:
         """初始化数据库连接"""
         self.db_path = db_path
         self.init_db()
+        
+        # 运行 Schema 迁移
+        from storage.migrator import DatabaseMigrator
+        migrator = DatabaseMigrator(self.db_path)
+        migrator.migrate(config.DB_SCHEMA_VERSION)
     
     def init_db(self):
         """初始化数据库表结构"""

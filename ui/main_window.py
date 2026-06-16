@@ -17,6 +17,7 @@ class ClickableLabel(QLabel):
         super().mouseDoubleClickEvent(event)
 import json
 import logging
+import webbrowser
 from pathlib import Path
 
 import config
@@ -27,6 +28,7 @@ from ui.styles import apply_styles
 from services.task_service import TaskService
 from services.notification import NotificationService
 from services.autostart import AutoStartService
+from services.update_service import UpdateCheckWorker
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +47,8 @@ class MainWindow(QWidget):
         self.always_on_top = True  # 始终置顶默认值
         self.language = "zh"  # 语言默认值
         self.custom_title = ""  # 自定义标题默认值
+        self.update_notify = True  # 启动时检查更新默认值
+        self._update_worker = None  # 后台更新检查线程引用
         
         self.init_ui()
         self.load_window_state()
@@ -238,6 +242,16 @@ class MainWindow(QWidget):
         zh_action.triggered.connect(lambda: self.on_change_language("zh"))
         en_action.triggered.connect(lambda: self.on_change_language("en"))
         
+        # 更新子菜单
+        update_menu = menu.addMenu(t["menu_update"])
+        check_update_action = update_menu.addAction(t["menu_check_update"])
+        check_update_action.triggered.connect(self.on_check_update)
+        
+        update_notify_action = update_menu.addAction(
+            ("✓ " if self.update_notify else "") + t["menu_update_notify"]
+        )
+        update_notify_action.triggered.connect(self.on_toggle_update_notify)
+        
         menu.addSeparator()
         
         # 退出选项
@@ -430,7 +444,8 @@ class MainWindow(QWidget):
             'height': self.height(),
             'always_on_top': self.always_on_top,
             'language': self.language,
-            'custom_title': self.custom_title
+            'custom_title': self.custom_title,
+            'update_notify': self.update_notify
         }
         
         try:
@@ -449,10 +464,12 @@ class MainWindow(QWidget):
                     self.always_on_top = state.get('always_on_top', True)
                     self.language = state.get('language', 'zh')
                     self.custom_title = state.get('custom_title', '')
+                    self.update_notify = state.get('update_notify', True)
             else:
                 self.always_on_top = True
                 self.language = 'zh'
                 self.custom_title = ''
+                self.update_notify = True
                 # 默认放在右下角
                 self.move_to_bottom_right()
         except Exception as e:
@@ -460,12 +477,17 @@ class MainWindow(QWidget):
             self.always_on_top = True
             self.language = 'zh'
             self.custom_title = ''
+            self.update_notify = True
             self.move_to_bottom_right()
         
         # 应用加载后的设置
         config.CURRENT_LANGUAGE = self.language
         self.apply_always_on_top()
         self.retranslate_ui()
+        
+        # 启动时自动检查更新（延迟 3 秒，排在开机提醒之后）
+        if self.update_notify:
+            QTimer.singleShot(3000, self._auto_check_update)
     
     def move_to_bottom_right(self):
         """移动窗口到屏幕右下角"""
@@ -494,4 +516,74 @@ class MainWindow(QWidget):
     def mouseReleaseEvent(self, event):
         """处理鼠标释放事件"""
         self.drag_start_pos = None
+    
+    # ===== 版本更新相关 =====
+    
+    def on_check_update(self):
+        """手动检查更新"""
+        self._start_update_check(manual=True)
+    
+    def on_toggle_update_notify(self):
+        """切换启动时检查更新开关"""
+        self.update_notify = not self.update_notify
+        self.save_window_state()
+        
+        t = config.TRANSLATIONS[self.language]
+        if self.update_notify:
+            status_msg = "✓ " + t["menu_update_notify"]
+        else:
+            status_msg = t["menu_update_notify"] + " OFF"
+        self.notification_service.notify(t["toast_system_title"], status_msg, duration=2)
+    
+    def _auto_check_update(self):
+        """启动时自动检查更新（静默模式，仅在有新版本时通知）"""
+        self._start_update_check(manual=False)
+    
+    def _start_update_check(self, manual: bool = False):
+        """启动后台更新检查线程"""
+        # 防止重复检查
+        if self._update_worker is not None and self._update_worker.isRunning():
+            logger.debug("Update check already in progress, skipping")
+            return
+        
+        self._update_worker = UpdateCheckWorker()
+        self._update_manual = manual
+        
+        self._update_worker.update_available.connect(self._on_update_available)
+        self._update_worker.already_latest.connect(self._on_already_latest)
+        self._update_worker.check_failed.connect(self._on_check_failed)
+        self._update_worker.start()
+    
+    def _on_update_available(self, version: str):
+        """发现新版本"""
+        t = config.TRANSLATIONS[self.language]
+        self.notification_service.notify(
+            t["toast_system_title"],
+            t["toast_update_available"].format(version=version),
+            duration=8
+        )
+        
+        # 手动检查时自动打开浏览器到 Release 页面
+        if self._update_manual:
+            webbrowser.open(config.GITHUB_RELEASE_URL)
+    
+    def _on_already_latest(self):
+        """已是最新版本（仅手动检查时通知）"""
+        if self._update_manual:
+            t = config.TRANSLATIONS[self.language]
+            self.notification_service.notify(
+                t["toast_system_title"],
+                t["toast_already_latest"].format(version=config.APP_VERSION),
+                duration=3
+            )
+    
+    def _on_check_failed(self, error_msg: str):
+        """检查失败（仅手动检查时通知，自动检查静默失败）"""
+        if self._update_manual:
+            t = config.TRANSLATIONS[self.language]
+            self.notification_service.notify(
+                t["toast_system_title"],
+                t["toast_update_failed"],
+                duration=3
+            )
 
