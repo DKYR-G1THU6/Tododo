@@ -3,7 +3,7 @@
 ## 🚀 直接下载使用 (Windows)
 
 如果您不想安装 Python 环境，只想运行本软件：
-1. 点击前往本项目的 [Releases](https://github.com/您的用户名/Tododo/releases) 页面。
+1. 点击前往本项目的 [Releases](https://github.com/DKYR-G1THU6/Tododo/releases) 页面。
 2. 下载最新版本发布中的 **`Tododo.exe`**。
 3. 双击 `Tododo.exe` 即可直接启动使用！
 
