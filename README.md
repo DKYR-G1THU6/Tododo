@@ -1,5 +1,12 @@
 # Tododo - PyQt5 待办事项 Kanban 应用
 
+## 🚀 直接下载使用 (Windows)
+
+如果您不想安装 Python 环境，只想运行本软件：
+1. 点击前往本项目的 [Releases](https://github.com/您的用户名/Tododo/releases) 页面。
+2. 下载最新版本发布中的 **`Tododo.exe`**。
+3. 双击 `Tododo.exe` 即可直接启动使用！
+
 ## 📋 项目简介
 
 Tododo 是一个轻量级的 Windows 待办事项应用，采用 Python + PyQt5 开发，提供 Kanban 式的任务管理界面。应用显示在屏幕右下角，支持开机自启、本地数据存储、自动每日重置等功能。
@@ -84,7 +91,8 @@ python main.py
 
 ### 4. 打包成 .exe（可选）
 ```bash
-pyinstaller -F -w -n Tododo main.py
+# 本地打包生成 Tododo.exe
+pyinstaller --noconsole --onefile --icon=resources/tododo.ico --add-data "resources;resources" main.py
 ```
 
 ## 📖 使用说明
