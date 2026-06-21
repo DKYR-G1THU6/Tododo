@@ -6,7 +6,7 @@ from pathlib import Path
 
 # 应用基本信息
 APP_NAME = "Tododo"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 
 # GitHub Release 信息
 GITHUB_REPO_OWNER = "DKYR-G1THU6"
