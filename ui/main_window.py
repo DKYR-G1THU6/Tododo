@@ -116,7 +116,6 @@ class MainWindow(QWidget):
             
         # 历史记录页面
         self.history_view = HistoryView(self.task_service)
-        self.history_view.back_requested.connect(self.on_back_clicked)
         self.stacked_widget.addWidget(self.history_view)
         
         # 软件更新页面
