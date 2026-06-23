@@ -16,6 +16,7 @@ class SingleColumnView(QWidget):
     status_changed = pyqtSignal(int, str)  # (task_id, new_status)
     deleted = pyqtSignal(int)  # (task_id)
     title_changed = pyqtSignal(int, str)  # (task_id, new_title)
+    type_changed = pyqtSignal(int, str)  # (task_id, new_type)
     
     def __init__(self, status: str):
         super().__init__()
@@ -55,6 +56,7 @@ class SingleColumnView(QWidget):
         item_widget.status_changed.connect(self.on_task_status_changed)
         item_widget.deleted.connect(self.on_task_deleted)
         item_widget.title_changed.connect(self.on_task_title_changed)
+        item_widget.type_changed.connect(self.on_task_type_changed)
         
         self.item_widgets[task.task_id] = item_widget
         
@@ -105,3 +107,7 @@ class SingleColumnView(QWidget):
     def on_task_title_changed(self, task_id: int, new_title: str):
         """处理任务标题改变"""
         self.title_changed.emit(task_id, new_title)
+        
+    def on_task_type_changed(self, task_id: int, new_type: str):
+        """处理任务类型改变"""
+        self.type_changed.emit(task_id, new_type)

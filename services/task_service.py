@@ -61,6 +61,13 @@ class TaskService:
         if result:
             self.notify_update()
         return result
+        
+    def update_task_type(self, task_id: int, new_type: str) -> bool:
+        """更新任务类型"""
+        result = self.db.update_task_type(task_id, new_type)
+        if result:
+            self.notify_update()
+        return result
     
     def get_next_status(self, current_status: str) -> str:
         """获取下一个状态"""

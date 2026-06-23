@@ -25,6 +25,8 @@ from ui.tab_bar import TabBar
 from ui.single_column_view import SingleColumnView
 from ui.task_input import TaskInputWidget
 from ui.styles import apply_styles
+from ui.history_view import HistoryView
+from ui.update_view import UpdateView
 from services.task_service import TaskService
 from services.notification import NotificationService
 from services.autostart import AutoStartService
@@ -66,6 +68,7 @@ class MainWindow(QWidget):
             view.status_changed.connect(self.on_task_status_changed)
             view.deleted.connect(self.on_task_deleted)
             view.title_changed.connect(self.on_task_title_changed)
+            view.type_changed.connect(self.on_task_type_changed)
     
     def init_ui(self):
         """初始化 UI"""
@@ -110,6 +113,16 @@ class MainWindow(QWidget):
             view = SingleColumnView(status)
             self.column_views[status] = view
             self.stacked_widget.addWidget(view)
+            
+        # 历史记录页面
+        self.history_view = HistoryView(self.task_service)
+        self.history_view.back_requested.connect(self.on_back_clicked)
+        self.stacked_widget.addWidget(self.history_view)
+        
+        # 软件更新页面
+        self.update_view = UpdateView(self.notification_service)
+        self.update_view.back_requested.connect(self.on_back_clicked)
+        self.stacked_widget.addWidget(self.update_view)
         
         # 任务输入框
         self.task_input = TaskInputWidget()
@@ -186,29 +199,38 @@ class MainWindow(QWidget):
         btn_layout.setSpacing(6)
         
         # 菜单按钮
-        menu_button = QPushButton("☰")
-        menu_button.setObjectName("menuButton")
-        menu_button.setFixedSize(36, 36)
-        menu_button.setCursor(Qt.PointingHandCursor)
-        menu_button.clicked.connect(self.show_context_menu)
+        self.menu_button = QPushButton("☰")
+        self.menu_button.setObjectName("menuButton")
+        self.menu_button.setFixedSize(36, 36)
+        self.menu_button.setCursor(Qt.PointingHandCursor)
+        self.menu_button.clicked.connect(self.show_context_menu)
+        
+        # 返回按钮
+        self.back_button = QPushButton("←")
+        self.back_button.setObjectName("backBtn")
+        self.back_button.setFixedSize(36, 36)
+        self.back_button.setCursor(Qt.PointingHandCursor)
+        self.back_button.hide()
+        self.back_button.clicked.connect(self.on_back_clicked)
         
         # 最小化按钮
-        minimize_button = QPushButton("_")
-        minimize_button.setObjectName("minimizeBtn")
-        minimize_button.setFixedSize(36, 36)
-        minimize_button.setCursor(Qt.PointingHandCursor)
-        minimize_button.clicked.connect(self.on_minimize)
+        self.minimize_button = QPushButton("_")
+        self.minimize_button.setObjectName("minimizeBtn")
+        self.minimize_button.setFixedSize(36, 36)
+        self.minimize_button.setCursor(Qt.PointingHandCursor)
+        self.minimize_button.clicked.connect(self.on_minimize)
         
         # 关闭按钮
-        close_button = QPushButton("×")
-        close_button.setObjectName("closeBtn")
-        close_button.setFixedSize(36, 36)
-        close_button.setCursor(Qt.PointingHandCursor)
-        close_button.clicked.connect(self.on_close)
+        self.close_button = QPushButton("×")
+        self.close_button.setObjectName("closeBtn")
+        self.close_button.setFixedSize(36, 36)
+        self.close_button.setCursor(Qt.PointingHandCursor)
+        self.close_button.clicked.connect(self.on_close)
         
-        btn_layout.addWidget(menu_button)
-        btn_layout.addWidget(minimize_button)
-        btn_layout.addWidget(close_button)
+        btn_layout.addWidget(self.menu_button)
+        btn_layout.addWidget(self.back_button)
+        btn_layout.addWidget(self.minimize_button)
+        btn_layout.addWidget(self.close_button)
         
         layout.addWidget(self.title_container, 1)
         layout.addLayout(btn_layout)
@@ -355,11 +377,11 @@ class MainWindow(QWidget):
         # 刷新输入框及添加按钮
         self.task_input.retranslate_ui(t["input_placeholder"], t["add_btn"])
         
-        # 刷新历史记录窗口（若已打开）
-        if hasattr(self, "_history_win") and self._history_win is not None and self._history_win.isVisible():
-            self._history_win.language = lang
-            self._history_win.retranslate_headers()
-            self._history_win.load_data()
+        # 刷新历史记录页面和软件更新页面语言
+        if hasattr(self, "history_view"):
+            self.history_view.set_language(lang)
+        if hasattr(self, "update_view"):
+            self.update_view.set_language(lang)
         
     def on_start_edit_title(self):
         """双击左上角标题开始编辑"""
@@ -452,21 +474,52 @@ class MainWindow(QWidget):
         """处理添加新任务"""
         self.task_service.add_task(title, task_type)
         
-    def on_show_history(self):
-        """打开历史记录窗口"""
-        from ui.history_window import HistoryWindow
-        if hasattr(self, "_history_win") and self._history_win is not None:
-            try:
-                self._history_win.close()
-            except Exception:
-                pass
-            
-        self._history_win = HistoryWindow(self.task_service, self.language, self.always_on_top)
+    def on_task_type_changed(self, task_id: int, new_type: str):
+        """处理任务类型修改"""
+        self.task_service.update_task_type(task_id, new_type)
         
-        # 将历史窗口摆在主窗口左侧，偏移 15 像素并对齐高度
-        main_geo = self.geometry()
-        self._history_win.move(main_geo.x() - config.WINDOW_WIDTH - 15, main_geo.y())
-        self._history_win.show()
+    def on_show_history(self):
+        """切换到历史记录子页面"""
+        self.prev_stacked_index = self.stacked_widget.currentIndex()
+        self.stacked_widget.setCurrentWidget(self.history_view)
+        self.history_view.load_data()
+        
+        # 隐藏 Tab 栏和任务输入框
+        self.tab_bar.hide()
+        self.task_input.hide()
+        
+        # 调整标题栏控制按钮
+        self.menu_button.hide()
+        self.minimize_button.hide()
+        self.close_button.hide()
+        self.back_button.show()
+        
+        t = config.TRANSLATIONS[self.language]
+        self.title_label.setText(t["history_title"])
+        
+    def on_back_clicked(self):
+        """点击返回按钮，从子页面返回任务列表"""
+        if self.stacked_widget.currentWidget() == self.update_view:
+            self.update_view.notify_exited_page()
+            
+        # 恢复标题显示
+        self.update_title_display()
+        
+        # 恢复标题栏控制按钮
+        self.back_button.hide()
+        self.menu_button.show()
+        self.minimize_button.show()
+        self.close_button.show()
+        
+        # 恢复标签栏和输入框
+        self.tab_bar.show()
+        self.task_input.show()
+        
+        # 返回上一个任务列表页面
+        if hasattr(self, 'prev_stacked_index'):
+            self.stacked_widget.setCurrentIndex(self.prev_stacked_index)
+        else:
+            self.stacked_widget.setCurrentIndex(0)
     
     def refresh_views(self):
         """刷新所有视图"""
@@ -607,32 +660,27 @@ class MainWindow(QWidget):
         self._update_worker.start()
     
     def _on_update_available(self, version: str, changelog: str, download_url: str):
-        """发现新版本，弹出自定义更新窗口"""
-        if hasattr(self, "_update_win") and self._update_win is not None:
-            try:
-                if self._update_win.isVisible():
-                    self._update_win.raise_()
-                    self._update_win.activateWindow()
-                    return
-            except Exception:
-                pass
-                
-        from ui.update_window import UpdateWindow
-        self._update_win = UpdateWindow(
-            version=version,
-            changelog=changelog,
-            download_url=download_url,
-            notification_service=self.notification_service,
-            language=self.language,
-            parent=self
-        )
+        """发现新版本，切换到更新页面并加载更新信息"""
+        self.prev_stacked_index = self.stacked_widget.currentIndex()
         
-        # 将更新窗口居中显示在主窗口上方
-        main_geo = self.geometry()
-        x = main_geo.x() + (main_geo.width() - self._update_win.width()) // 2
-        y = main_geo.y() + (main_geo.height() - self._update_win.height()) // 2
-        self._update_win.move(x, y)
-        self._update_win.show()
+        # 传递更新参数
+        self.update_view.set_update_info(version, changelog, download_url)
+        
+        # 切换到软件更新页
+        self.stacked_widget.setCurrentWidget(self.update_view)
+        
+        # 隐藏 Tab 栏和任务输入框
+        self.tab_bar.hide()
+        self.task_input.hide()
+        
+        # 调整标题栏控制按钮
+        self.menu_button.hide()
+        self.minimize_button.hide()
+        self.close_button.hide()
+        self.back_button.show()
+        
+        t = config.TRANSLATIONS[self.language]
+        self.title_label.setText(f"{t['update_title']} (v{version})")
     
     def _on_already_latest(self):
         """已是最新版本（仅手动检查时通知）"""

@@ -114,6 +114,20 @@ QPushButton#closeBtn:hover {
     color: #ef4444; /* red-500 */
 }
 
+QPushButton#backBtn {
+    background-color: transparent;
+    color: #64748b;
+    font-size: 14pt;
+    font-weight: bold;
+    border: none;
+    border-radius: 6px;
+}
+
+QPushButton#backBtn:hover {
+    background-color: #f1f5f9;
+    color: #0f172a;
+}
+
 QPushButton#refreshBtn {
     background-color: transparent;
     color: #64748b;

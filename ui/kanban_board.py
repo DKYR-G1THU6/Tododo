@@ -5,7 +5,7 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QListWidget, QListWidgetItem, QCheckBox, QPushButton, QLineEdit, QPlainTextEdit
 )
-from PyQt5.QtCore import Qt, pyqtSignal, QEvent, QRect, QSize
+from PyQt5.QtCore import Qt, pyqtSignal, QEvent, QRect, QSize, QTimer
 from PyQt5.QtGui import QFontMetrics
 import config
 from models.task import Task
@@ -17,12 +17,20 @@ class TaskItemWidget(QWidget):
     status_changed = pyqtSignal(int, str)  # (task_id, new_status)
     deleted = pyqtSignal(int)  # (task_id)
     title_changed = pyqtSignal(int, str)  # (task_id, new_title)
+    type_changed = pyqtSignal(int, str)  # (task_id, new_type)
     
     def __init__(self, task: Task):
         super().__init__()
         self.task = task
         self.is_editing = False
         self.list_item = None  # 将由父视图关联并设置
+        
+        # 单双击防冲突定时器
+        self.click_timer = QTimer(self)
+        self.click_timer.setSingleShot(True)
+        self.click_timer.setInterval(220)
+        self.click_timer.timeout.connect(self.handle_single_click)
+        
         self.init_ui()
         
     def init_ui(self):
@@ -30,6 +38,8 @@ class TaskItemWidget(QWidget):
         self.setObjectName("taskItemWidget")
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setCursor(Qt.PointingHandCursor)  # 设置为手型光标暗示可点击
+        
+        self.setToolTip("单击流转任务状态，双击切换任务类型 / Single click to flow status, double click to toggle task type")
         
         # 外层布局：左右边距为0，与颜色条无缝贴合
         outer_layout = QHBoxLayout()
@@ -39,6 +49,7 @@ class TaskItemWidget(QWidget):
         # 左侧垂直颜色带 (4px 宽)
         self.color_bar = QWidget()
         self.color_bar.setFixedWidth(4)
+        self.color_bar.setToolTip("双击切换任务类型 / Double click to switch task type")
         color = "#10b981" if self.task.task_type == "daily" else "#6366f1"
         self.color_bar.setStyleSheet(
             f"background-color: {color}; "
@@ -111,19 +122,35 @@ class TaskItemWidget(QWidget):
         self.setLayout(outer_layout)
     
     def mousePressEvent(self, event):
-        """点击卡片本身触发状态流转"""
+        """点击卡片本身：开启单双击防冲突定时器，推迟触发状态流转"""
         if self.is_editing:
             super().mousePressEvent(event)
             return
             
         if event.button() == Qt.LeftButton:
-            if self.task.status == config.TASK_STATUS_TODO:
-                self.status_changed.emit(self.task.task_id, config.TASK_STATUS_IN_PROGRESS)
-            elif self.task.status == config.TASK_STATUS_IN_PROGRESS:
-                self.status_changed.emit(self.task.task_id, config.TASK_STATUS_DONE)
-            elif self.task.status == config.TASK_STATUS_DONE:
-                self.status_changed.emit(self.task.task_id, config.TASK_STATUS_TODO)
-            super().mousePressEvent(event)
+            self.click_timer.start()
+            event.accept()
+            
+    def mouseDoubleClickEvent(self, event):
+        """双击卡片本身：停止单双击防冲突定时器，直接触发任务类型切换"""
+        if self.is_editing:
+            super().mouseDoubleClickEvent(event)
+            return
+            
+        if event.button() == Qt.LeftButton:
+            self.click_timer.stop()
+            new_type = "one_time" if self.task.task_type == "daily" else "daily"
+            self.type_changed.emit(self.task.task_id, new_type)
+            event.accept()
+            
+    def handle_single_click(self):
+        """处理延迟触发的状况流转单击事件"""
+        if self.task.status == config.TASK_STATUS_TODO:
+            self.status_changed.emit(self.task.task_id, config.TASK_STATUS_IN_PROGRESS)
+        elif self.task.status == config.TASK_STATUS_IN_PROGRESS:
+            self.status_changed.emit(self.task.task_id, config.TASK_STATUS_DONE)
+        elif self.task.status == config.TASK_STATUS_DONE:
+            self.status_changed.emit(self.task.task_id, config.TASK_STATUS_TODO)
     
     def on_start_edit(self):
         """开始编辑"""

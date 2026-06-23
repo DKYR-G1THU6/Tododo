@@ -112,6 +112,25 @@ class Database:
         conn.close()
         
         return updated
+        
+    def update_task_type(self, task_id: int, new_type: str) -> bool:
+        """更新任务类型 (daily 或 one_time)"""
+        if new_type not in ('daily', 'one_time'):
+            return False
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE tasks 
+            SET task_type = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE task_id = ?
+        ''', (new_type, task_id))
+        
+        conn.commit()
+        updated = cursor.rowcount > 0
+        conn.close()
+        
+        return updated
     
     def get_task(self, task_id: int) -> Optional[Task]:
         """获取单个任务"""
