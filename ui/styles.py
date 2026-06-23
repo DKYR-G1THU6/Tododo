@@ -74,7 +74,7 @@ QPushButton#titleConfirmBtn:pressed {
 }
 
 /* ===== 标题栏控制按钮 ===== */
-QPushButton#menuButton, QPushButton#minimizeBtn, QPushButton#closeBtn {
+QPushButton#menuButton, QPushButton#minimizeBtn, QPushButton#closeBtn, QPushButton#refreshBtn, QPushButton#deleteBtnHeader {
     border: none;
     border-radius: 6px;
     padding: 0px;
@@ -112,6 +112,28 @@ QPushButton#closeBtn {
 QPushButton#closeBtn:hover {
     background-color: #fee2e2; /* red-50 */
     color: #ef4444; /* red-500 */
+}
+
+QPushButton#refreshBtn {
+    background-color: transparent;
+    color: #64748b;
+    font-size: 14pt;
+}
+
+QPushButton#refreshBtn:hover {
+    background-color: #f1f5f9;
+    color: #0f172a;
+}
+
+QPushButton#deleteBtnHeader {
+    background-color: transparent;
+    color: #64748b;
+    font-size: 12pt;
+}
+
+QPushButton#deleteBtnHeader:hover {
+    background-color: #fee2e2; /* red-50 background for delete hover */
+    color: #ef4444; /* red-500 text for delete hover */
 }
 
 /* ===== 标签页导航栏 ===== */
@@ -351,6 +373,95 @@ QScrollBar::sub-line:vertical, QScrollBar::add-line:vertical {
 QScrollBar::up-arrow:vertical, QScrollBar::down-arrow:vertical {
     border: none;
     background: none;
+}
+
+/* ===== 任务类型下拉按钮 ===== */
+QPushButton#taskTypeBtn {
+    background-color: #f1f5f9;
+    color: #475569;
+    border: none;
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 8.5pt;
+    font-weight: bold;
+    min-height: 22px;
+    max-height: 22px;
+}
+
+QPushButton#taskTypeBtn:hover {
+    background-color: #e2e8f0;
+    color: #0f172a;
+}
+
+QPushButton#taskTypeBtn::menu-indicator {
+    image: none;
+}
+
+/* ===== 历史记录表格 ===== */
+QTableWidget#historyTable {
+    background-color: #ffffff;
+    border: none;
+    gridline-color: #f1f5f9;
+    outline: none;
+    border-bottom-left-radius: 11px;
+    border-bottom-right-radius: 11px;
+}
+
+QTableWidget::item {
+    padding: 10px 12px;
+    border-bottom: 1px solid #f1f5f9;
+    color: #334155;
+}
+
+QTableWidget::item:selected {
+    background-color: #f0fdf4;
+    color: #059669;
+}
+
+QHeaderView::section {
+    background-color: #f8fafc;
+    color: #475569;
+    padding: 8px 12px;
+    font-weight: bold;
+    border: none;
+    border-bottom: 2px solid #e2e8f0;
+}
+
+/* ===== 标签栏内部排序按钮 ===== */
+QPushButton#tabSortBtn {
+    background-color: transparent;
+    color: #64748b; /* slate-500 */
+    border: none;
+    font-size: 13pt;
+    font-weight: bold;
+    padding: 0px;
+    min-width: 44px;
+    max-width: 44px;
+    min-height: 44px;
+    max-height: 44px;
+}
+
+QPushButton#tabSortBtn:hover {
+    background-color: #f8fafc;
+    color: #0f172a;
+}
+
+QPushButton#tabSortBtnActive {
+    background-color: transparent;
+    color: #10b981; /* emerald-500 */
+    border: none;
+    font-size: 13pt;
+    font-weight: bold;
+    padding: 0px;
+    min-width: 44px;
+    max-width: 44px;
+    min-height: 44px;
+    max-height: 44px;
+}
+
+QPushButton#tabSortBtnActive:hover {
+    background-color: #f0fdf4;
+    color: #059669;
 }
 """
 

@@ -6,7 +6,7 @@ from pathlib import Path
 
 # 应用基本信息
 APP_NAME = "Tododo"
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.1.1"
 
 # GitHub Release 信息
 GITHUB_REPO_OWNER = "DKYR-G1THU6"
@@ -15,7 +15,7 @@ GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO_OWNER}/{GITHUB_REPO
 GITHUB_RELEASE_URL = f"https://github.com/{GITHUB_REPO_OWNER}/{GITHUB_REPO_NAME}/releases/latest"
 
 # 数据库 Schema 版本
-DB_SCHEMA_VERSION = 1
+DB_SCHEMA_VERSION = 2
 
 # 数据存储路径
 APP_DATA_DIR = Path(os.path.expandvars(r"%APPDATA%\Tododo"))
@@ -85,7 +85,17 @@ TRANSLATIONS = {
         "toast_system_title": "Tododo",
         "toast_update_available": "发现新版本 {version}，点击菜单可下载",
         "toast_already_latest": "当前已是最新版本 (v{version})",
-        "toast_update_failed": "检查更新失败，请稍后重试"
+        "toast_update_failed": "检查更新失败，请稍后重试",
+        "menu_history": "历史记录",
+        "history_title": "已完成的一次性任务",
+        "history_col_no": "编号",
+        "history_col_task": "任务",
+        "history_col_date": "完成日期",
+        "task_type_daily": "🟢 每日任务",
+        "task_type_one_time": "🔵 一次性任务",
+        "sort_default": "⇅ 默认排序",
+        "sort_daily_first": "⇅ 每日优先",
+        "delete_selected": "删除选中"
     },
     "en": {
         "title": "Tododo",
@@ -113,7 +123,17 @@ TRANSLATIONS = {
         "toast_system_title": "Tododo",
         "toast_update_available": "New version {version} available, check menu to download",
         "toast_already_latest": "You are using the latest version (v{version})",
-        "toast_update_failed": "Failed to check for updates"
+        "toast_update_failed": "Failed to check for updates",
+        "menu_history": "History",
+        "history_title": "Completed One-time Tasks",
+        "history_col_no": "No.",
+        "history_col_task": "Task",
+        "history_col_date": "Completion Date",
+        "task_type_daily": "🟢 Daily Task",
+        "task_type_one_time": "🔵 One-time Task",
+        "sort_default": "⇅ Default",
+        "sort_daily_first": "⇅ Daily First",
+        "delete_selected": "Delete Selected"
     }
 }
 

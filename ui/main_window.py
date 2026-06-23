@@ -48,6 +48,7 @@ class MainWindow(QWidget):
         self.language = "zh"  # 语言默认值
         self.custom_title = ""  # 自定义标题默认值
         self.update_notify = True  # 启动时检查更新默认值
+        self.sort_by_type = False  # 每日任务优先排序默认值
         self._update_worker = None  # 后台更新检查线程引用
         
         self.init_ui()
@@ -56,6 +57,7 @@ class MainWindow(QWidget):
         
         # 连接信号
         self.tab_bar.tab_changed.connect(self.on_tab_changed)
+        self.tab_bar.sort_clicked.connect(self.on_toggle_sort)
         self.task_input.task_added.connect(self.on_task_added)
         self.task_service.register_update_callback(self.refresh_views)
         
@@ -187,18 +189,21 @@ class MainWindow(QWidget):
         menu_button = QPushButton("☰")
         menu_button.setObjectName("menuButton")
         menu_button.setFixedSize(36, 36)
+        menu_button.setCursor(Qt.PointingHandCursor)
         menu_button.clicked.connect(self.show_context_menu)
         
         # 最小化按钮
         minimize_button = QPushButton("_")
         minimize_button.setObjectName("minimizeBtn")
         minimize_button.setFixedSize(36, 36)
+        minimize_button.setCursor(Qt.PointingHandCursor)
         minimize_button.clicked.connect(self.on_minimize)
         
         # 关闭按钮
         close_button = QPushButton("×")
         close_button.setObjectName("closeBtn")
         close_button.setFixedSize(36, 36)
+        close_button.setCursor(Qt.PointingHandCursor)
         close_button.clicked.connect(self.on_close)
         
         btn_layout.addWidget(menu_button)
@@ -251,6 +256,12 @@ class MainWindow(QWidget):
             ("✓ " if self.update_notify else "") + t["menu_update_notify"]
         )
         update_notify_action.triggered.connect(self.on_toggle_update_notify)
+        
+        menu.addSeparator()
+        
+        # 历史记录选项
+        history_action = menu.addAction(t["menu_history"])
+        history_action.triggered.connect(self.on_show_history)
         
         menu.addSeparator()
         
@@ -335,8 +346,20 @@ class MainWindow(QWidget):
         }
         self.tab_bar.retranslate_ui(tab_titles)
         
+        # 刷新排序按钮提示
+        sort_tip = t["sort_daily_first"] if not self.sort_by_type else t["sort_default"]
+        if sort_tip.startswith("⇅ "):
+            sort_tip = sort_tip[2:]
+        self.tab_bar.sort_btn.setToolTip(sort_tip)
+        
         # 刷新输入框及添加按钮
         self.task_input.retranslate_ui(t["input_placeholder"], t["add_btn"])
+        
+        # 刷新历史记录窗口（若已打开）
+        if hasattr(self, "_history_win") and self._history_win is not None and self._history_win.isVisible():
+            self._history_win.language = lang
+            self._history_win.retranslate_headers()
+            self._history_win.load_data()
         
     def on_start_edit_title(self):
         """双击左上角标题开始编辑"""
@@ -425,13 +448,32 @@ class MainWindow(QWidget):
         """处理任务标题修改"""
         self.task_service.update_task_title(task_id, new_title)
     
-    def on_task_added(self, title: str):
+    def on_task_added(self, title: str, task_type: str):
         """处理添加新任务"""
-        self.task_service.add_task(title)
+        self.task_service.add_task(title, task_type)
+        
+    def on_show_history(self):
+        """打开历史记录窗口"""
+        from ui.history_window import HistoryWindow
+        if hasattr(self, "_history_win") and self._history_win is not None:
+            try:
+                self._history_win.close()
+            except Exception:
+                pass
+            
+        self._history_win = HistoryWindow(self.task_service, self.language, self.always_on_top)
+        
+        # 将历史窗口摆在主窗口左侧，偏移 15 像素并对齐高度
+        main_geo = self.geometry()
+        self._history_win.move(main_geo.x() - config.WINDOW_WIDTH - 15, main_geo.y())
+        self._history_win.show()
     
     def refresh_views(self):
         """刷新所有视图"""
         tasks = self.task_service.get_all_tasks()
+        if self.sort_by_type:
+            # 按照：每日任务在上面 (0)，一次性任务在下面 (1) 排序
+            tasks.sort(key=lambda x: (0 if x.task_type == 'daily' else 1))
         for status, view in self.column_views.items():
             view.refresh(tasks)
     
@@ -445,7 +487,8 @@ class MainWindow(QWidget):
             'always_on_top': self.always_on_top,
             'language': self.language,
             'custom_title': self.custom_title,
-            'update_notify': self.update_notify
+            'update_notify': self.update_notify,
+            'sort_by_type': self.sort_by_type
         }
         
         try:
@@ -465,11 +508,13 @@ class MainWindow(QWidget):
                     self.language = state.get('language', 'zh')
                     self.custom_title = state.get('custom_title', '')
                     self.update_notify = state.get('update_notify', True)
+                    self.sort_by_type = state.get('sort_by_type', False)
             else:
                 self.always_on_top = True
                 self.language = 'zh'
                 self.custom_title = ''
                 self.update_notify = True
+                self.sort_by_type = False
                 # 默认放在右下角
                 self.move_to_bottom_right()
         except Exception as e:
@@ -483,6 +528,7 @@ class MainWindow(QWidget):
         # 应用加载后的设置
         config.CURRENT_LANGUAGE = self.language
         self.apply_always_on_top()
+        self.tab_bar.set_sort_active(self.sort_by_type)
         self.retranslate_ui()
         
         # 启动时自动检查更新（延迟 3 秒，排在开机提醒之后）
@@ -586,4 +632,19 @@ class MainWindow(QWidget):
                 t["toast_update_failed"],
                 duration=3
             )
+            
+    def on_toggle_sort(self):
+        """切换排序模式"""
+        self.sort_by_type = not self.sort_by_type
+        self.tab_bar.set_sort_active(self.sort_by_type)
+        
+        # 更新 Tooltip
+        t = config.TRANSLATIONS[self.language]
+        sort_tip = t["sort_daily_first"] if not self.sort_by_type else t["sort_default"]
+        if sort_tip.startswith("⇅ "):
+            sort_tip = sort_tip[2:]
+        self.tab_bar.sort_btn.setToolTip(sort_tip)
+        
+        self.save_window_state()
+        self.refresh_views()
 

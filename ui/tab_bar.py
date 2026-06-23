@@ -8,19 +8,22 @@ class TabBar(QWidget):
     
     # 信号：当标签被点击时
     tab_changed = pyqtSignal(str)  # 发出被点击的标签ID
+    # 信号：当排序按钮被点击时
+    sort_clicked = pyqtSignal()
     
-    def __init__(self, tabs: dict):
+    def __init__(self, tabs: dict, sort_active: bool = False):
         """
         初始化标签栏
         
         Args:
             tabs: {tab_id: tab_label} 字典
-            例如: {"todo": "To Do", "in_progress": "In Progress", "done": "Done"}
+            sort_active: 初始排序状态
         """
         super().__init__()
         self.tabs = tabs
         self.active_tab = list(tabs.keys())[0]  # 默认第一个标签为active
         self.tab_buttons = {}
+        self.sort_active = sort_active
         
         self.init_ui()
     
@@ -30,11 +33,20 @@ class TabBar(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         
+        # 插入小小的排序按钮在最左边
+        self.sort_btn = QPushButton("⇅")
+        self.sort_btn.setObjectName("tabSortBtnActive" if self.sort_active else "tabSortBtn")
+        self.sort_btn.setCursor(Qt.PointingHandCursor)
+        self.sort_btn.clicked.connect(self.on_sort_btn_clicked)
+        self.sort_btn.setFixedHeight(44)
+        layout.addWidget(self.sort_btn)
+        
         for tab_id, tab_label in self.tabs.items():
             btn = QPushButton(tab_label)
             btn.setObjectName("tabButton")
             btn.setCheckable(True)
-            btn.setMinimumHeight(40)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setFixedHeight(44)
             btn.setMinimumWidth(80)
             btn.setFont(QFont("Segoe UI", 10, QFont.Bold))
             
@@ -50,6 +62,17 @@ class TabBar(QWidget):
         self.setLayout(layout)
         self.setMinimumHeight(44)
         self.setMaximumHeight(44)
+        
+    def on_sort_btn_clicked(self):
+        """处理排序按钮点击"""
+        self.sort_clicked.emit()
+        
+    def set_sort_active(self, active: bool):
+        """更新排序按钮的激活状态"""
+        self.sort_active = active
+        self.sort_btn.setObjectName("tabSortBtnActive" if active else "tabSortBtn")
+        self.sort_btn.style().unpolish(self.sort_btn)
+        self.sort_btn.style().polish(self.sort_btn)
     
     def on_tab_clicked(self, tab_id: str):
         """处理标签点击"""

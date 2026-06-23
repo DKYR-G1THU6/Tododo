@@ -24,16 +24,32 @@ class TaskItemWidget(QWidget):
         self.is_editing = False
         self.list_item = None  # 将由父视图关联并设置
         self.init_ui()
-    
+        
     def init_ui(self):
         """初始化任务项 UI"""
         self.setObjectName("taskItemWidget")
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setCursor(Qt.PointingHandCursor)  # 设置为手型光标暗示可点击
         
-        layout = QHBoxLayout()
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(8)
+        # 外层布局：左右边距为0，与颜色条无缝贴合
+        outer_layout = QHBoxLayout()
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.setSpacing(0)
+        
+        # 左侧垂直颜色带 (4px 宽)
+        self.color_bar = QWidget()
+        self.color_bar.setFixedWidth(4)
+        color = "#10b981" if self.task.task_type == "daily" else "#6366f1"
+        self.color_bar.setStyleSheet(
+            f"background-color: {color}; "
+            f"border-top-left-radius: 4px; "
+            f"border-bottom-left-radius: 4px;"
+        )
+        
+        # 内层正文布局
+        content_layout = QHBoxLayout()
+        content_layout.setContentsMargins(12, 10, 10, 10)
+        content_layout.setSpacing(8)
         
         # 任务标题
         self.title_label = QLabel(self.task.title)
@@ -81,14 +97,18 @@ class TaskItemWidget(QWidget):
         self.cancel_btn.hide()
         self.cancel_btn.clicked.connect(self.on_cancel_edit)
         
-        layout.addWidget(self.title_label, 1)
-        layout.addWidget(self.edit_input, 1)
-        layout.addWidget(self.edit_btn)
-        layout.addWidget(self.save_btn)
-        layout.addWidget(self.delete_btn)
-        layout.addWidget(self.cancel_btn)
+        content_layout.addWidget(self.title_label, 1)
+        content_layout.addWidget(self.edit_input, 1)
+        content_layout.addWidget(self.edit_btn)
+        content_layout.addWidget(self.save_btn)
+        content_layout.addWidget(self.delete_btn)
+        content_layout.addWidget(self.cancel_btn)
         
-        self.setLayout(layout)
+        # 装填进外层布局
+        outer_layout.addWidget(self.color_bar)
+        outer_layout.addLayout(content_layout, 1)
+        
+        self.setLayout(outer_layout)
     
     def mousePressEvent(self, event):
         """点击卡片本身触发状态流转"""
@@ -101,6 +121,8 @@ class TaskItemWidget(QWidget):
                 self.status_changed.emit(self.task.task_id, config.TASK_STATUS_IN_PROGRESS)
             elif self.task.status == config.TASK_STATUS_IN_PROGRESS:
                 self.status_changed.emit(self.task.task_id, config.TASK_STATUS_DONE)
+            elif self.task.status == config.TASK_STATUS_DONE:
+                self.status_changed.emit(self.task.task_id, config.TASK_STATUS_TODO)
             super().mousePressEvent(event)
     
     def on_start_edit(self):
@@ -163,7 +185,7 @@ class TaskItemWidget(QWidget):
                 self.on_cancel_edit()
                 return True
         return super().eventFilter(obj, event)
-
+ 
     def sizeHint(self):
         # 根据当前宽度和文本计算高度
         width = self.width()
@@ -174,7 +196,7 @@ class TaskItemWidget(QWidget):
         if self.is_editing:
             font = self.edit_input.font()
             metrics = QFontMetrics(font)
-            label_width = width - 84
+            label_width = width - 90
             if label_width < 50:
                 label_width = 50
             # 减去 QPlainTextEdit 内部左右 padding
@@ -189,7 +211,7 @@ class TaskItemWidget(QWidget):
         else:
             font = self.title_label.font()
             metrics = QFontMetrics(font)
-            label_width = width - 84
+            label_width = width - 90
             if label_width < 50:
                 label_width = 50
             rect = metrics.boundingRect(
@@ -214,7 +236,7 @@ class TaskItemWidget(QWidget):
             if self.is_editing:
                 font = self.edit_input.font()
                 metrics = QFontMetrics(font)
-                label_width = width - 84
+                label_width = width - 90
                 if label_width < 50:
                     label_width = 50
                 text_width = label_width - 12
@@ -227,7 +249,7 @@ class TaskItemWidget(QWidget):
             else:
                 font = self.title_label.font()
                 metrics = QFontMetrics(font)
-                label_width = width - 84
+                label_width = width - 90
                 if label_width < 50:
                     label_width = 50
                 rect = metrics.boundingRect(

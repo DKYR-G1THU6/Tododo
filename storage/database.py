@@ -35,6 +35,7 @@ class Database:
                 status TEXT NOT NULL,
                 created_date TEXT NOT NULL,
                 completed_date TEXT,
+                task_type TEXT DEFAULT 'daily',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -43,7 +44,7 @@ class Database:
         conn.commit()
         conn.close()
     
-    def add_task(self, title: str, status: str = config.TASK_STATUS_TODO) -> int:
+    def add_task(self, title: str, status: str = config.TASK_STATUS_TODO, task_type: str = 'daily') -> int:
         """添加新任务"""
         today = datetime.now().strftime("%Y-%m-%d")
         
@@ -51,9 +52,9 @@ class Database:
         cursor = conn.cursor()
         
         cursor.execute('''
-            INSERT INTO tasks (title, status, created_date)
-            VALUES (?, ?, ?)
-        ''', (title, status, today))
+            INSERT INTO tasks (title, status, created_date, task_type)
+            VALUES (?, ?, ?, ?)
+        ''', (title, status, today, task_type))
         
         conn.commit()
         task_id = cursor.lastrowid
@@ -118,7 +119,7 @@ class Database:
         cursor = conn.cursor()
         
         cursor.execute('''
-            SELECT task_id, title, status, created_date, completed_date
+            SELECT task_id, title, status, created_date, completed_date, task_type
             FROM tasks WHERE task_id = ?
         ''', (task_id,))
         
@@ -131,19 +132,30 @@ class Database:
                 title=row[1],
                 status=row[2],
                 created_date=row[3],
-                completed_date=row[4]
+                completed_date=row[4],
+                task_type=row[5]
             )
         return None
     
     def get_all_tasks(self) -> List[Task]:
-        """获取所有任务"""
+        """获取所有要在当前主界面显示的任务（包括所有每日任务，以及未完成的一次性任务，和今天完成的一次性任务）"""
+        today = datetime.now().strftime("%Y-%m-%d")
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
         cursor.execute('''
-            SELECT task_id, title, status, created_date, completed_date
-            FROM tasks ORDER BY created_at ASC
-        ''')
+            SELECT task_id, title, status, created_date, completed_date, task_type
+            FROM tasks 
+            WHERE task_type = 'daily'
+            OR (
+                task_type = 'one_time'
+                AND (
+                    status != ?
+                    OR (status = ? AND completed_date = ?)
+                )
+            )
+            ORDER BY created_at ASC
+        ''', (config.TASK_STATUS_DONE, config.TASK_STATUS_DONE, today))
         
         rows = cursor.fetchall()
         conn.close()
@@ -154,21 +166,35 @@ class Database:
                 title=row[1],
                 status=row[2],
                 created_date=row[3],
-                completed_date=row[4]
+                completed_date=row[4],
+                task_type=row[5]
             )
             for row in rows
         ]
         return tasks
     
     def get_tasks_by_status(self, status: str) -> List[Task]:
-        """按状态获取任务"""
+        """按状态获取任务（用于列展示，包括所有每日任务，以及未完成的一次性任务，和今天完成的一次性任务）"""
+        today = datetime.now().strftime("%Y-%m-%d")
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
         cursor.execute('''
-            SELECT task_id, title, status, created_date, completed_date
-            FROM tasks WHERE status = ? ORDER BY created_at ASC
-        ''', (status,))
+            SELECT task_id, title, status, created_date, completed_date, task_type
+            FROM tasks 
+            WHERE status = ? 
+            AND (
+                task_type = 'daily'
+                OR (
+                    task_type = 'one_time'
+                    AND (
+                        status != ?
+                        OR (status = ? AND completed_date = ?)
+                    )
+                )
+            )
+            ORDER BY created_at ASC
+        ''', (status, config.TASK_STATUS_DONE, config.TASK_STATUS_DONE, today))
         
         rows = cursor.fetchall()
         conn.close()
@@ -179,25 +205,28 @@ class Database:
                 title=row[1],
                 status=row[2],
                 created_date=row[3],
-                completed_date=row[4]
+                completed_date=row[4],
+                task_type=row[5]
             )
             for row in rows
         ]
         return tasks
     
     def get_today_tasks(self) -> List[Task]:
-        """获取今天创建的任务（To Do 和 In Progress）"""
-        today = datetime.now().strftime("%Y-%m-%d")
-        
+        """获取今天需要统计的待办和进行中任务（用于每日启动通知计数，包含每日任务和未完成的一次性任务）"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
         cursor.execute('''
-            SELECT task_id, title, status, created_date, completed_date
+            SELECT task_id, title, status, created_date, completed_date, task_type
             FROM tasks 
-            WHERE created_date = ? AND (status = ? OR status = ?)
+            WHERE (status = ? OR status = ?)
+            AND (
+                task_type = 'daily'
+                OR (task_type = 'one_time' AND status != ?)
+            )
             ORDER BY created_at ASC
-        ''', (today, config.TASK_STATUS_TODO, config.TASK_STATUS_IN_PROGRESS))
+        ''', (config.TASK_STATUS_TODO, config.TASK_STATUS_IN_PROGRESS, config.TASK_STATUS_DONE))
         
         rows = cursor.fetchall()
         conn.close()
@@ -208,7 +237,8 @@ class Database:
                 title=row[1],
                 status=row[2],
                 created_date=row[3],
-                completed_date=row[4]
+                completed_date=row[4],
+                task_type=row[5]
             )
             for row in rows
         ]
@@ -216,7 +246,7 @@ class Database:
     
     def reset_daily_tasks(self) -> int:
         """
-        每日重置：将前日的 In Progress 和 Done 状态的任务改为 To Do
+        每日重置：将前日的 In Progress 和 Done 状态的每日任务改为 To Do
         返回重置的任务数量
         """
         today = datetime.now().strftime("%Y-%m-%d")
@@ -224,10 +254,10 @@ class Database:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
-        # 查询前日的 in_progress 和 done 任务
+        # 只查询前日的 task_type 为 daily 的 in_progress 和 done 任务
         cursor.execute('''
             SELECT task_id FROM tasks 
-            WHERE created_date < ? AND (status = ? OR status = ?)
+            WHERE task_type = 'daily' AND created_date < ? AND (status = ? OR status = ?)
         ''', (today, config.TASK_STATUS_IN_PROGRESS, config.TASK_STATUS_DONE))
         
         tasks_to_reset = cursor.fetchall()
@@ -245,3 +275,31 @@ class Database:
         conn.close()
         
         return reset_count
+
+    def get_completed_one_time_tasks(self) -> List[Task]:
+        """获取所有已完成的一次性任务历史记录，按完成时间降序排列"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT task_id, title, status, created_date, completed_date, task_type
+            FROM tasks 
+            WHERE task_type = 'one_time' AND status = ?
+            ORDER BY completed_date DESC, created_at DESC
+        ''', (config.TASK_STATUS_DONE,))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        tasks = [
+            Task(
+                task_id=row[0],
+                title=row[1],
+                status=row[2],
+                created_date=row[3],
+                completed_date=row[4],
+                task_type=row[5]
+            )
+            for row in rows
+        ]
+        return tasks

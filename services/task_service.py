@@ -18,15 +18,23 @@ class TaskService:
     def register_update_callback(self, callback: Callable):
         """注册 UI 更新回调"""
         self.update_callbacks.append(callback)
+        
+    def unregister_update_callback(self, callback: Callable):
+        """注销 UI 更新回调"""
+        if callback in self.update_callbacks:
+            self.update_callbacks.remove(callback)
     
     def notify_update(self):
         """触发所有回调"""
         for callback in self.update_callbacks:
-            callback()
+            try:
+                callback()
+            except Exception:
+                pass
     
-    def add_task(self, title: str) -> int:
+    def add_task(self, title: str, task_type: str = 'daily') -> int:
         """添加新任务"""
-        task_id = self.db.add_task(title, config.TASK_STATUS_TODO)
+        task_id = self.db.add_task(title, config.TASK_STATUS_TODO, task_type)
         self.notify_update()
         return task_id
     
@@ -82,3 +90,7 @@ class TaskService:
         if reset_count > 0:
             self.notify_update()
         return reset_count
+
+    def get_completed_one_time_tasks(self) -> List[Task]:
+        """获取所有已完成的一次性任务历史记录"""
+        return self.db.get_completed_one_time_tasks()

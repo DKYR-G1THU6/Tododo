@@ -55,9 +55,7 @@ class DatabaseMigrator:
         # 迁移方法映射表
         migrations = {
             1: self._migrate_to_v1,
-            # 未来新增的迁移在此添加:
-            # 2: self._migrate_to_v2,
-            # 3: self._migrate_to_v3,
+            2: self._migrate_to_v2,
         }
         
         # 逐步执行增量迁移
@@ -123,13 +121,17 @@ class DatabaseMigrator:
         finally:
             conn.close()
     
-    # 未来迁移示例:
-    # def _migrate_to_v2(self):
-    #     """v1 → v2: 例如添加 priority 列"""
-    #     conn = sqlite3.connect(self.db_path)
-    #     cursor = conn.cursor()
-    #     try:
-    #         cursor.execute("ALTER TABLE tasks ADD COLUMN priority INTEGER DEFAULT 0")
-    #         conn.commit()
-    #     finally:
-    #         conn.close()
+    def _migrate_to_v2(self):
+        """
+        v1 → v2: 新增 task_type 列，默认为 'daily'
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        try:
+            cursor.execute("ALTER TABLE tasks ADD COLUMN task_type TEXT DEFAULT 'daily'")
+            conn.commit()
+            logger.info("Added task_type column to tasks table")
+        except sqlite3.OperationalError as e:
+            logger.warning(f"Failed to add task_type column (it may already exist): {e}")
+        finally:
+            conn.close()
