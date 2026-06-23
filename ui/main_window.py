@@ -567,6 +567,12 @@ class MainWindow(QWidget):
     
     def on_check_update(self):
         """手动检查更新"""
+        t = config.TRANSLATIONS[self.language]
+        self.notification_service.notify(
+            t["toast_system_title"],
+            t["update_checking"],
+            duration=2
+        )
         self._start_update_check(manual=True)
     
     def on_toggle_update_notify(self):
@@ -600,18 +606,33 @@ class MainWindow(QWidget):
         self._update_worker.check_failed.connect(self._on_check_failed)
         self._update_worker.start()
     
-    def _on_update_available(self, version: str):
-        """发现新版本"""
-        t = config.TRANSLATIONS[self.language]
-        self.notification_service.notify(
-            t["toast_system_title"],
-            t["toast_update_available"].format(version=version),
-            duration=8
+    def _on_update_available(self, version: str, changelog: str, download_url: str):
+        """发现新版本，弹出自定义更新窗口"""
+        if hasattr(self, "_update_win") and self._update_win is not None:
+            try:
+                if self._update_win.isVisible():
+                    self._update_win.raise_()
+                    self._update_win.activateWindow()
+                    return
+            except Exception:
+                pass
+                
+        from ui.update_window import UpdateWindow
+        self._update_win = UpdateWindow(
+            version=version,
+            changelog=changelog,
+            download_url=download_url,
+            notification_service=self.notification_service,
+            language=self.language,
+            parent=self
         )
         
-        # 手动检查时自动打开浏览器到 Release 页面
-        if self._update_manual:
-            webbrowser.open(config.GITHUB_RELEASE_URL)
+        # 将更新窗口居中显示在主窗口上方
+        main_geo = self.geometry()
+        x = main_geo.x() + (main_geo.width() - self._update_win.width()) // 2
+        y = main_geo.y() + (main_geo.height() - self._update_win.height()) // 2
+        self._update_win.move(x, y)
+        self._update_win.show()
     
     def _on_already_latest(self):
         """已是最新版本（仅手动检查时通知）"""

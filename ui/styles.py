@@ -463,6 +463,69 @@ QPushButton#tabSortBtnActive:hover {
     background-color: #f0fdf4;
     color: #059669;
 }
+
+/* ===== 版本更新弹窗 ===== */
+QTextBrowser#changelogBrowser {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background-color: #f8fafc;
+    padding: 8px;
+}
+
+QProgressBar#updateProgressBar {
+    background-color: #f1f5f9;
+    border: none;
+    border-radius: 4px;
+}
+
+QProgressBar#updateProgressBar::chunk {
+    background-color: #10b981;
+    border-radius: 4px;
+}
+
+QPushButton#laterBtn {
+    background-color: #f1f5f9;
+    color: #475569;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    font-weight: bold;
+    padding: 0 16px;
+}
+
+QPushButton#laterBtn:hover {
+    background-color: #e2e8f0;
+}
+
+QPushButton#confirmBtn {
+    background-color: #10b981;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-weight: bold;
+    padding: 0 20px;
+}
+
+QPushButton#confirmBtn:hover {
+    background-color: #059669;
+}
+
+QPushButton#confirmBtn:disabled {
+    background-color: #94a3b8;
+    color: #cbd5e1;
+}
+
+QPushButton#confirmBtnDev {
+    background-color: #6366f1;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-weight: bold;
+    padding: 0 20px;
+}
+
+QPushButton#confirmBtnDev:hover {
+    background-color: #4f46e5;
+}
 """
 
 
