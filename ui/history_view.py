@@ -76,12 +76,10 @@ class HistoryView(QWidget):
         self.table.setWordWrap(True)
         self.table.viewport().setCursor(Qt.PointingHandCursor)
         
-        # 调整列宽以适应较窄的主窗口
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Fixed)
+        # 调整列宽以适应较窄的主窗口，动态计算宽度以避免文字被截断
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
-        self.table.setColumnWidth(0, 40)  # 序号列
-        self.table.setColumnWidth(2, 110) # 日期列
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
         
         self.retranslate_headers()
         

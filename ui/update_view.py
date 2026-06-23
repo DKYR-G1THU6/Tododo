@@ -51,6 +51,10 @@ class UpdateView(QWidget):
         layout.setContentsMargins(16, 12, 16, 16)
         layout.setSpacing(12)
         
+        # 页面标题
+        self.page_title = QLabel(t["update_title"])
+        self.page_title.setStyleSheet("font-weight: bold; font-size: 11.5pt; color: #1e293b;")
+        
         # 更新日志标题
         changelog_title = QLabel(t["update_changelog"])
         changelog_title.setStyleSheet("font-weight: bold; font-size: 10.5pt; color: #475569;")
@@ -90,6 +94,7 @@ class UpdateView(QWidget):
         progress_layout.addWidget(self.speed_label)
         self.progress_container.hide()
         
+        layout.addWidget(self.page_title)
         layout.addWidget(changelog_title)
         layout.addWidget(self.changelog_browser, 1)
         layout.addWidget(self.dev_tip_label)
@@ -131,6 +136,7 @@ class UpdateView(QWidget):
         
         t = config.TRANSLATIONS[self.language]
         
+        self.page_title.setText(f"{t['update_title']} (v{version})")
         self.changelog_browser.setHtml(self.format_changelog(self.changelog))
         
         # 重置下载状态

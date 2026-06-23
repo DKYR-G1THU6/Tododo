@@ -29,7 +29,7 @@ TRANSLATION = {
     "history_title": "Completed One-time Tasks",
     "history_col_no": "No.",
     "history_col_task": "Task",
-    "history_col_date": "Completion Date",
+    "history_col_date": "Date",
     "task_type_daily": "🟢 Daily Task",
     "task_type_one_time": "🔵 One-time Task",
     "sort_default": "⇅ Default",

@@ -493,9 +493,6 @@ class MainWindow(QWidget):
         self.close_button.hide()
         self.back_button.show()
         
-        t = config.TRANSLATIONS[self.language]
-        self.title_label.setText(t["history_title"])
-        
     def on_back_clicked(self):
         """点击返回按钮，从子页面返回任务列表"""
         if self.stacked_widget.currentWidget() == self.update_view:
@@ -677,9 +674,6 @@ class MainWindow(QWidget):
         self.minimize_button.hide()
         self.close_button.hide()
         self.back_button.show()
-        
-        t = config.TRANSLATIONS[self.language]
-        self.title_label.setText(f"{t['update_title']} (v{version})")
     
     def _on_already_latest(self):
         """已是最新版本（仅手动检查时通知）"""
