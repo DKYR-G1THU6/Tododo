@@ -540,6 +540,59 @@ QPushButton#confirmBtnDev {
 QPushButton#confirmBtnDev:hover {
     background-color: #4f46e5;
 }
+
+/* ===== 迷你模式 MiniBar ===== */
+#miniBarContainer {
+    background-color: transparent;
+    border-radius: 0px;
+    border: none;
+}
+
+QLabel#miniTitleLabel {
+    font-size: 10pt;
+    font-weight: bold;
+    color: #0f172a;
+    background-color: transparent;
+    padding-left: 4px;
+}
+
+QPushButton#miniRestoreBtn {
+    background-color: transparent;
+    color: #64748b;
+    border: none;
+    border-radius: 6px;
+    font-size: 12pt;
+    font-weight: bold;
+    padding: 0px;
+    min-width: 32px;
+    max-width: 32px;
+    min-height: 32px;
+    max-height: 32px;
+}
+
+QPushButton#miniRestoreBtn:hover {
+    background-color: #f0fdf4;
+    color: #059669;
+}
+
+QPushButton#miniCloseBtn {
+    background-color: transparent;
+    color: #64748b;
+    border: none;
+    border-radius: 6px;
+    font-size: 12pt;
+    font-weight: bold;
+    padding: 0px;
+    min-width: 32px;
+    max-width: 32px;
+    min-height: 32px;
+    max-height: 32px;
+}
+
+QPushButton#miniCloseBtn:hover {
+    background-color: #fee2e2;
+    color: #ef4444;
+}
 """
 
 

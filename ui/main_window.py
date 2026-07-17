@@ -5,7 +5,10 @@ from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
     QLabel, QLineEdit, QMenu, QApplication, QStackedWidget
 )
-from PyQt5.QtCore import Qt, QRect, QPoint, QTimer, QEvent, pyqtSignal
+from PyQt5.QtCore import (
+    Qt, QRect, QPoint, QTimer, QEvent, pyqtSignal,
+    QPropertyAnimation, QEasingCurve, QSize
+)
 from PyQt5.QtGui import QFont, QIcon
 
 class ClickableLabel(QLabel):
@@ -27,12 +30,28 @@ from ui.task_input import TaskInputWidget
 from ui.styles import apply_styles
 from ui.history_view import HistoryView
 from ui.update_view import UpdateView
+from ui.mini_bar import MiniBar
 from services.task_service import TaskService
 from services.notification import NotificationService
 from services.autostart import AutoStartService
 from services.update_service import UpdateCheckWorker
 
 logger = logging.getLogger(__name__)
+
+
+class SlimStackedWidget(QStackedWidget):
+    """一个在计算 sizeHint 时只考虑当前 visible widget 的 QStackedWidget"""
+    def sizeHint(self):
+        curr = self.currentWidget()
+        if curr:
+            return curr.sizeHint()
+        return super().sizeHint()
+        
+    def minimumSizeHint(self):
+        curr = self.currentWidget()
+        if curr:
+            return curr.minimumSizeHint()
+        return super().minimumSizeHint()
 
 
 class MainWindow(QWidget):
@@ -52,6 +71,14 @@ class MainWindow(QWidget):
         self.update_notify = True  # 启动时检查更新默认值
         self.sort_by_type = False  # 每日任务优先排序默认值
         self._update_worker = None  # 后台更新检查线程引用
+        
+        # 迷你模式状态
+        self.is_mini_mode = False
+        self._mini_bar_x = None   # 迷你条上次保存的 X 位置
+        self._mini_bar_y = None   # 迷你条上次保存的 Y 位置
+        self._normal_geometry = None  # 完整模式下的 geometry（还原时使用）
+        self._mini_anim = None    # QPropertyAnimation 引用
+        self._pre_restore_mini_pos = None  # 记录边缘反弹前迷你条的原始坐标
         
         self.init_ui()
         self.load_window_state()
@@ -91,9 +118,9 @@ class MainWindow(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground)
 
         # 外层布局用于留出圆角边距
-        outer_layout = QVBoxLayout()
-        outer_layout.setContentsMargins(10, 10, 10, 10)
-        outer_layout.setSpacing(0)
+        self.outer_layout = QVBoxLayout()
+        self.outer_layout.setContentsMargins(10, 10, 10, 10)
+        self.outer_layout.setSpacing(0)
         
         # 标题栏
         title_bar = self.create_title_bar()
@@ -128,8 +155,8 @@ class MainWindow(QWidget):
         self.task_input.setObjectName("taskInput")
         
         # 内层容器用于实际内容并应用圆角背景
-        container = QWidget()
-        container.setObjectName("mainContainer")
+        self.main_container = QWidget()
+        self.main_container.setObjectName("mainContainer")
         container_layout = QVBoxLayout()
         container_layout.setContentsMargins(0, 0, 0, 0)
         container_layout.setSpacing(0)
@@ -137,10 +164,22 @@ class MainWindow(QWidget):
         container_layout.addWidget(self.tab_bar)
         container_layout.addWidget(self.stacked_widget, 1)
         container_layout.addWidget(self.task_input)
-        container.setLayout(container_layout)
+        self.main_container.setLayout(container_layout)
 
-        outer_layout.addWidget(container)
-        self.setLayout(outer_layout)
+        # 迷你条容器（共享 mainContainer 样式，保持白色圆角背景）
+        self.mini_bar = MiniBar()
+        self.mini_bar.setObjectName("mainContainer")
+        self.mini_bar.restore_clicked.connect(self.exit_mini_mode)
+        self.mini_bar.close_clicked.connect(self.on_close)
+
+        # 用 view_stack 切换完整视图与迷你条（保证窗口始终有背景）
+        self.view_stack = SlimStackedWidget()
+        self.view_stack.addWidget(self.main_container)  # index 0 = 正常模式
+        self.view_stack.addWidget(self.mini_bar)        # index 1 = 迷你模式
+        self.view_stack.setCurrentIndex(0)
+
+        self.outer_layout.addWidget(self.view_stack)
+        self.setLayout(self.outer_layout)
         
         # 应用样式
         apply_styles(self)
@@ -381,6 +420,10 @@ class MainWindow(QWidget):
             self.history_view.set_language(lang)
         if hasattr(self, "update_view"):
             self.update_view.set_language(lang)
+        # 同步迷你条标题
+        if hasattr(self, "mini_bar"):
+            title = self.custom_title if self.custom_title else t["title"]
+            self.mini_bar.set_title(title)
         
     def on_start_edit_title(self):
         """双击左上角标题开始编辑"""
@@ -431,13 +474,145 @@ class MainWindow(QWidget):
         self.stacked_widget.setCurrentIndex(index)
     
     def on_minimize(self):
-        """最小化窗口"""
-        self.showMinimized()
+        """点击最小化按钮 → 进入迷你模式"""
+        self.enter_mini_mode()
     
+    def _get_mini_height(self) -> int:
+        """获取迷你条高度（与系统任务栏高度一致，约40px）"""
+        try:
+            screen = QApplication.primaryScreen()
+            screen_rect = screen.geometry()
+            avail_rect = screen.availableGeometry()
+            taskbar_h = screen_rect.bottom() - avail_rect.bottom()
+            # 任务栏在底部时 taskbar_h > 0；其他位置或获取失败时默认 40
+            if taskbar_h > 10:
+                return taskbar_h
+        except Exception:
+            pass
+        return 40
+
+    def _get_mini_start_pos(self) -> QPoint:
+        """计算迷你条初始位置（始终基于当前主窗口的可视左上角位置进行原位收缩，考虑10px边距）"""
+        # 如果存在上次由于触碰边缘展开而产生的原始坐标，则直接缩回到该边缘坐标
+        if getattr(self, '_pre_restore_mini_pos', None) is not None:
+            pos = self._pre_restore_mini_pos
+            self._pre_restore_mini_pos = None
+            return pos
+            
+        geo = self.geometry()
+        return QPoint(geo.x() + 10, geo.y() + 10)
+
+    def enter_mini_mode(self):
+        """收缩动画：主窗口 → 迷你条"""
+        if self.is_mini_mode:
+            return
+        self.is_mini_mode = True
+
+        # 保存当前完整 geometry，还原时使用
+        self._normal_geometry = self.geometry()
+
+        mini_h = 48  # 用户明确指定迷你高度为 48px
+        mini_w = config.MINI_WINDOW_WIDTH
+        start_pos = self._get_mini_start_pos()
+
+        # 同步迷你条标题
+        t = config.TRANSLATIONS[self.language]
+        title = self.custom_title if self.custom_title else t["title"]
+        self.mini_bar.set_title(title)
+
+        # 切换堆叠页面并消除边距，以便迷你条占满全部空间并露出圆角
+        self.view_stack.setCurrentIndex(1)
+        self.outer_layout.setContentsMargins(0, 0, 0, 0)
+
+        # 目标 geometry（迷你尺寸，无额外边距）
+        target_rect = QRect(start_pos.x(), start_pos.y(), mini_w, mini_h)
+
+        # 启动缩放动画
+        self._mini_anim = QPropertyAnimation(self, b"geometry")
+        self._mini_anim.setDuration(200)
+        self._mini_anim.setStartValue(self._normal_geometry)
+        self._mini_anim.setEndValue(target_rect)
+        self._mini_anim.setEasingCurve(QEasingCurve.OutCubic)
+        self._mini_anim.start()
+
+    def exit_mini_mode(self):
+        """还原动画：迷你条 → 主窗口"""
+        if not self.is_mini_mode:
+            return
+        self.is_mini_mode = False
+
+        # 保存迷你条当前位置以便下次记住
+        cur = self.geometry()
+        self._mini_bar_x = cur.x()
+        self._mini_bar_y = cur.y()
+        self.save_window_state()
+
+        # 切换回主页面，恢复 10px 边距以显现主界面的投影和圆角
+        self.view_stack.setCurrentIndex(0)
+        self.outer_layout.setContentsMargins(10, 10, 10, 10)
+
+        # 还原 geometry（考虑 10px 边距，检测屏幕边界防溢出，实现在迷你条当前可视位置原位展开）
+        w = self._normal_geometry.width() if self._normal_geometry else config.WINDOW_WIDTH
+        h = self._normal_geometry.height() if self._normal_geometry else config.WINDOW_HEIGHT
+        
+        rx = cur.x() - 10
+        ry = cur.y() - 10
+        
+        # 记录未经纠偏的原始目标位置
+        orig_rx = rx
+        orig_ry = ry
+
+        # 获取可用屏幕区域（排除任务栏）
+        screen = QApplication.screenAt(cur.center())
+        if not screen:
+            screen = QApplication.primaryScreen()
+        avail = screen.availableGeometry()
+
+        # 如果底部越界（比如在任务栏附近），向上推
+        if ry + h > avail.bottom() + 1:
+            ry = avail.bottom() + 1 - h
+
+        # 如果顶部越界，向下推
+        if ry < avail.top():
+            ry = avail.top()
+
+        # 如果右侧越界，向左推
+        if rx + w > avail.right() + 1:
+            rx = avail.right() + 1 - w
+
+        # 如果左侧越界，向右推
+        if rx < avail.left():
+            rx = avail.left()
+
+        # 如果发生了边界反弹（左下右纠偏），记录展开前的原始迷你条坐标（以实现再次最小化时能归位缩回边缘）
+        if rx != orig_rx or ry != orig_ry:
+            self._pre_restore_mini_pos = cur.topLeft()
+        else:
+            self._pre_restore_mini_pos = None
+
+        restore_rect = QRect(rx, ry, w, h)
+
+        self._mini_anim = QPropertyAnimation(self, b"geometry")
+        self._mini_anim.setDuration(200)
+        self._mini_anim.setStartValue(self.geometry())
+        self._mini_anim.setEndValue(restore_rect)
+        self._mini_anim.setEasingCurve(QEasingCurve.OutCubic)
+        self._mini_anim.start()
+
+
     def on_close(self):
         """关闭应用"""
         self.save_window_state()
         QApplication.quit()
+
+    def moveEvent(self, event):
+        """窗口移动事件"""
+        super().moveEvent(event)
+        # 如果在正常模式下被手动拖拽移动了窗口，说明改变了工作区，清空预存的边缘最小化坐标
+        # 必须排除正在播放动画（收缩/还原）的情况，动画过程中的移动不视为手动拖拽
+        anim_running = hasattr(self, '_mini_anim') and self._mini_anim is not None and self._mini_anim.state() == QPropertyAnimation.Running
+        if not getattr(self, 'is_mini_mode', False) and not anim_running:
+            self._pre_restore_mini_pos = None
     
     def on_task_status_changed(self, task_id: int, new_status: str):
         """处理任务状态改变"""
@@ -475,6 +650,7 @@ class MainWindow(QWidget):
         
     def on_task_type_changed(self, task_id: int, new_type: str):
         """处理任务类型修改"""
+        self._preserve_scroll_on_next_refresh = True
         self.task_service.update_task_type(task_id, new_type)
         
     def on_show_history(self):
@@ -519,25 +695,45 @@ class MainWindow(QWidget):
     
     def refresh_views(self):
         """刷新所有视图"""
+        preserve_scroll = getattr(self, '_preserve_scroll_on_next_refresh', False)
+        self._preserve_scroll_on_next_refresh = False
         tasks = self.task_service.get_all_tasks()
         if self.sort_by_type:
             # 按照：每日任务在上面 (0)，一次性任务在下面 (1) 排序
             tasks.sort(key=lambda x: (0 if x.task_type == 'daily' else 1))
         for status, view in self.column_views.items():
-            view.refresh(tasks)
+            view.refresh(tasks, preserve_scroll=preserve_scroll)
     
     def save_window_state(self):
         """保存窗口状态"""
+        # 如果当前在迷你模式，保存迷你条位置；否则保存主窗口位置
+        if self.is_mini_mode:
+            mini_x = self.x()
+            mini_y = self.y()
+            main_x = self._normal_geometry.x() if self._normal_geometry else self.x()
+            main_y = self._normal_geometry.y() if self._normal_geometry else self.y()
+            main_w = self._normal_geometry.width() if self._normal_geometry else config.WINDOW_WIDTH
+            main_h = self._normal_geometry.height() if self._normal_geometry else config.WINDOW_HEIGHT
+        else:
+            mini_x = self._mini_bar_x
+            mini_y = self._mini_bar_y
+            main_x = self.x()
+            main_y = self.y()
+            main_w = config.WINDOW_WIDTH
+            main_h = config.WINDOW_HEIGHT
+
         state = {
-            'x': self.x(),
-            'y': self.y(),
-            'width': self.width(),
-            'height': self.height(),
+            'x': main_x,
+            'y': main_y,
+            'width': main_w,
+            'height': main_h,
             'always_on_top': self.always_on_top,
             'language': self.language,
             'custom_title': self.custom_title,
             'update_notify': self.update_notify,
-            'sort_by_type': self.sort_by_type
+            'sort_by_type': self.sort_by_type,
+            'mini_bar_x': mini_x,
+            'mini_bar_y': mini_y,
         }
         
         try:
@@ -552,12 +748,15 @@ class MainWindow(QWidget):
             if self.window_config_file.exists():
                 with open(self.window_config_file, 'r', encoding='utf-8') as f:
                     state = json.load(f)
-                    self.setGeometry(state['x'], state['y'], state['width'], state['height'])
+                    # 加载窗口大小时始终使用配置文件的默认宽高，防止因升级或损坏缓存导致尺寸无法同步
+                    self.setGeometry(state['x'], state['y'], config.WINDOW_WIDTH, config.WINDOW_HEIGHT)
                     self.always_on_top = state.get('always_on_top', True)
                     self.language = state.get('language', 'zh')
                     self.custom_title = state.get('custom_title', '')
                     self.update_notify = state.get('update_notify', True)
                     self.sort_by_type = state.get('sort_by_type', False)
+                    self._mini_bar_x = state.get('mini_bar_x', None)
+                    self._mini_bar_y = state.get('mini_bar_y', None)
             else:
                 self.always_on_top = True
                 self.language = 'zh'

@@ -89,12 +89,15 @@ class SingleColumnView(QWidget):
         self.item_widgets.clear()
         self.list_widget.clear()
     
-    def refresh(self, tasks: list):
+    def refresh(self, tasks: list, preserve_scroll: bool = False):
         """刷新任务列表"""
+        scroll_value = self.list_widget.verticalScrollBar().value() if preserve_scroll else 0
         self.clear()
         for task in tasks:
             if task.status == self.status:
                 self.add_task(task)
+        if preserve_scroll and scroll_value > 0:
+            self.list_widget.verticalScrollBar().setValue(scroll_value)
     
     def on_task_status_changed(self, task_id: int, new_status: str):
         """处理任务状态改变"""
@@ -110,4 +113,14 @@ class SingleColumnView(QWidget):
         
     def on_task_type_changed(self, task_id: int, new_type: str):
         """处理任务类型改变"""
+        # 立即更新本地 widget 的视觉（颜色条），避免刷新时滚动跳动
+        if task_id in self.item_widgets:
+            widget = self.item_widgets[task_id]
+            widget.task.task_type = new_type
+            color = "#10b981" if new_type == "daily" else "#6366f1"
+            widget.color_bar.setStyleSheet(
+                f"background-color: {color}; "
+                f"border-top-left-radius: 4px; "
+                f"border-bottom-left-radius: 4px;"
+            )
         self.type_changed.emit(task_id, new_type)
