@@ -6,3 +6,19 @@ dist/
 .gemini/
 storage/*.db
 window.json
+
+# 密钥 / 环境变量（切勿提交 Supabase / Groq 密钥）
+.env
+.env.*
+!.env.example
+
+# Supabase CLI 本地产物
+supabase/.branches/
+supabase/.temp/
+
+# Node / Expo（mobile/ 用）
+node_modules/
+mobile/.expo/
+mobile/dist/
+mobile/web-build/
+*.log
