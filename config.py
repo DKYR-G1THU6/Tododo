@@ -15,7 +15,7 @@ GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO_OWNER}/{GITHUB_REPO
 GITHUB_RELEASE_URL = f"https://github.com/{GITHUB_REPO_OWNER}/{GITHUB_REPO_NAME}/releases/latest"
 
 # 数据库 Schema 版本
-DB_SCHEMA_VERSION = 2
+DB_SCHEMA_VERSION = 3
 
 # 数据存储路径
 APP_DATA_DIR = Path(os.path.expandvars(r"%APPDATA%\Tododo"))

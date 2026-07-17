@@ -3,6 +3,7 @@
 支持增量迁移，确保用户数据安全
 """
 import sqlite3
+import uuid
 import logging
 from pathlib import Path
 
@@ -56,6 +57,7 @@ class DatabaseMigrator:
         migrations = {
             1: self._migrate_to_v1,
             2: self._migrate_to_v2,
+            3: self._migrate_to_v3,
         }
         
         # 逐步执行增量迁移
@@ -133,5 +135,49 @@ class DatabaseMigrator:
             logger.info("Added task_type column to tasks table")
         except sqlite3.OperationalError as e:
             logger.warning(f"Failed to add task_type column (it may already exist): {e}")
+        finally:
+            conn.close()
+
+    def _migrate_to_v3(self):
+        """
+        v2 → v3: 为 PC/手机双端同步准备字段。
+
+        - 新增全局唯一 uuid、软删除墓碑、待推送标记、语音相关列
+        - 给所有现有行回填 uuid，并标记为 dirty=1（首次同步时整批推送上云）
+        """
+        # 需要新增的列（列名 -> 建列 DDL 片段）
+        new_columns = [
+            ("uuid", "uuid TEXT"),
+            ("deleted", "deleted INTEGER DEFAULT 0"),
+            ("deleted_at", "deleted_at TIMESTAMP"),
+            ("dirty", "dirty INTEGER DEFAULT 0"),
+            ("has_voice", "has_voice INTEGER DEFAULT 0"),
+            ("audio_path", "audio_path TEXT"),
+            ("audio_url", "audio_url TEXT"),
+            ("transcript", "transcript TEXT"),
+            ("transcribe_status", "transcribe_status TEXT"),
+        ]
+
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        try:
+            for col_name, ddl in new_columns:
+                try:
+                    cursor.execute(f"ALTER TABLE tasks ADD COLUMN {ddl}")
+                    logger.info(f"Added {col_name} column to tasks table")
+                except sqlite3.OperationalError as e:
+                    logger.warning(f"Failed to add {col_name} column (it may already exist): {e}")
+
+            # 给缺少 uuid 的现有行回填 uuid，并标记为待推送
+            cursor.execute("SELECT task_id FROM tasks WHERE uuid IS NULL OR uuid = ''")
+            rows_to_backfill = cursor.fetchall()
+            for (task_id,) in rows_to_backfill:
+                cursor.execute(
+                    "UPDATE tasks SET uuid = ?, dirty = 1 WHERE task_id = ?",
+                    (str(uuid.uuid4()), task_id)
+                )
+
+            conn.commit()
+            logger.info(f"Backfilled uuid for {len(rows_to_backfill)} existing task(s)")
         finally:
             conn.close()
