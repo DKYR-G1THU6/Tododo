@@ -6,9 +6,10 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, AppState, FlatList, Pressable, SafeAreaView, StyleSheet,
+  ActivityIndicator, Alert, AppState, FlatList, Pressable, StyleSheet,
   Text, TextInput, View,
 } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import {
   RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, useAudioRecorder,
@@ -27,6 +28,7 @@ import {
 } from './src/sync/syncEngine';
 import AccountScreen from './src/screens/AccountScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import ErrorBoundary from './src/ErrorBoundary';
 import type { Task, TaskStatus, TaskType } from './src/types';
 
 const SYNC_COLORS: Record<SyncStatus, string> = {
@@ -43,7 +45,7 @@ const SYNC_LABELS: Record<SyncStatus, string> = {
   offline: '离线 — 恢复网络后自动同步',
 };
 
-export default function App() {
+function TododoApp() {
   const [ready, setReady] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [activeStatus, setActiveStatus] = useState<TaskStatus>('todo');
@@ -357,6 +359,20 @@ export default function App() {
         </Text>
       </Pressable>
     </SafeAreaView>
+  );
+}
+
+/**
+ * 外层包一层错误边界：渲染期异常会显示错误信息而不是白屏，
+ * 这样调试时终端和屏幕都能看到问题出在哪。
+ */
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <ErrorBoundary>
+        <TododoApp />
+      </ErrorBoundary>
+    </SafeAreaProvider>
   );
 }
 
