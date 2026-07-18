@@ -17,6 +17,22 @@ GITHUB_RELEASE_URL = f"https://github.com/{GITHUB_REPO_OWNER}/{GITHUB_REPO_NAME}
 # 数据库 Schema 版本
 DB_SCHEMA_VERSION = 3
 
+# ============================
+# Supabase 同步后端
+# ============================
+# 注：publishable/anon key 设计上就是公开的（客户端 app 都会内嵌），
+# 真正的防线是云端 tasks 表上的 RLS 策略。service_role key 绝不放这里。
+SUPABASE_URL = "https://veipfzkrurcuiohhhylm.supabase.co"
+SUPABASE_ANON_KEY = "sb_publishable_-xGNvb8TBjHZcGilPPi3Fw_mIUjPAYo"
+
+SUPABASE_AUTH_URL = f"{SUPABASE_URL}/auth/v1"
+SUPABASE_REST_URL = f"{SUPABASE_URL}/rest/v1"
+SUPABASE_FUNCTIONS_URL = f"{SUPABASE_URL}/functions/v1"
+SUPABASE_VOICE_BUCKET = "voice"
+
+# 同步轮询间隔（秒）
+SYNC_POLL_INTERVAL = 30
+
 # 数据存储路径
 APP_DATA_DIR = Path(os.path.expandvars(r"%APPDATA%\Tododo"))
 APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -26,6 +42,12 @@ DATABASE_FILE = APP_DATA_DIR / "tasks.db"
 
 # 配置文件路径
 CONFIG_FILE = APP_DATA_DIR / "config.json"
+
+# 登录会话文件（存 access/refresh token，不进仓库）
+SESSION_FILE = APP_DATA_DIR / "session.json"
+
+# 同步状态文件（存增量拉取的高水位游标）
+SYNC_STATE_FILE = APP_DATA_DIR / "sync_state.json"
 
 # UI 配置
 WINDOW_WIDTH = 380

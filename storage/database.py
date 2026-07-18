@@ -377,7 +377,7 @@ class Database:
                 if not r_uuid:
                     continue
 
-                cursor.execute("SELECT updated_at FROM tasks WHERE uuid = ?", (r_uuid,))
+                cursor.execute("SELECT updated_at, dirty FROM tasks WHERE uuid = ?", (r_uuid,))
                 existing = cursor.fetchone()
 
                 if existing is None:
@@ -396,7 +396,13 @@ class Database:
                     ))
                     written += 1
                 else:
-                    local_updated = existing[0]
+                    local_updated, local_dirty = existing[0], existing[1]
+
+                    # 本地还有未推送的改动：保留本地，等下一轮 push 上去后再由云端回传合并，
+                    # 避免 push 失败时本地编辑被云端旧值覆盖丢失。
+                    if local_dirty:
+                        continue
+
                     remote_updated = r.get('updated_at')
                     if remote_updated and (local_updated is None or remote_updated > local_updated):
                         cursor.execute('''
