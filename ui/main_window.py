@@ -338,7 +338,12 @@ class MainWindow(QWidget):
         # 历史记录选项
         history_action = menu.addAction(t["menu_history"])
         history_action.triggered.connect(self.on_show_history)
-        
+
+        # 账号 / 设备同步（未接同步服务时不显示）
+        if self.sync_service is not None:
+            account_action = menu.addAction(t.get("menu_account", "账号 / 设备同步"))
+            account_action.triggered.connect(self.on_show_account)
+
         menu.addSeparator()
         
         # 退出选项
@@ -736,6 +741,29 @@ class MainWindow(QWidget):
         t = config.TRANSLATIONS[self.language]
         self._set_sync_indicator("#9ca3af", t.get("sync_offline", "Offline"))
         logger.debug(f"Sync failed: {message}")
+
+    # ============================
+    # 账号 / 设备同步
+    # ============================
+
+    def on_show_account(self):
+        """打开账号对话框：绑定邮箱，或用邮箱登录到同一账号"""
+        from ui.account_view import AccountDialog
+
+        dialog = AccountDialog(self.sync_service.auth, self)
+        dialog.account_switched.connect(self.on_account_switched)
+        dialog.exec_()
+
+    def on_account_switched(self):
+        """
+        登录到了另一个账号：本机现有任务属于旧账号，必须清空并全量重拉。
+        否则它们会被当作待推送内容混进新账号里。
+        """
+        removed = self.task_service.db.clear_all_tasks()
+        self.sync_service.state.reset()
+        self.refresh_views()
+        self.sync_service.request_sync()
+        logger.info(f"Account switched: cleared {removed} local task(s), full resync requested")
 
     def refresh_views(self):
         """刷新所有视图"""

@@ -79,6 +79,51 @@ class AuthService:
         expires_at = (self._session or {}).get("expires_at", 0)
         return time.time() >= (expires_at - EXPIRY_SKEW_SECONDS)
 
+    # ============================
+    # 账号（M5：让两台设备认作同一个人）
+    # ============================
+
+    def get_account_info(self) -> dict:
+        """返回 {user_id, email, is_anonymous}，用于界面展示当前账号状态"""
+        token = self.ensure_session()
+        user = self.client.get_user(token)
+        email = user.get("email") or None
+        return {
+            "user_id": user.get("id"),
+            "email": email,
+            "is_anonymous": bool(user.get("is_anonymous", email is None)),
+        }
+
+    def bind_email(self, email: str):
+        """
+        给当前账号绑定邮箱。
+
+        匿名账号绑定后升级为正式账号，**user_id 不变**，所以本机已有的任务
+        全部保留、无需重新同步。Supabase 会发确认邮件，用户点链接后才生效。
+        """
+        token = self.ensure_session()
+        self.client.update_user_email(token, email)
+        logger.info("Email binding requested; confirmation mail sent")
+
+    def send_login_code(self, email: str):
+        """给邮箱发登录验证码（用于在另一台设备上登录同一账号）"""
+        self.client.send_email_otp(email)
+
+    def sign_in_with_code(self, email: str, code: str) -> bool:
+        """
+        用邮箱验证码登录。
+
+        返回 True 表示登录到了**另一个** user —— 此时本地数据属于旧账号，
+        调用方必须清空本地库和同步游标后重新全量拉取，否则会把旧账号的数据
+        推到新账号里去。
+        """
+        previous_user_id = self.user_id
+        session = self.client.verify_email_otp(email, code)
+        self._save_session(session)
+        switched = session.get("user_id") != previous_user_id
+        logger.info(f"Signed in via email OTP; user switched={switched}")
+        return switched
+
     def ensure_session(self) -> str:
         """
         确保有一个可用的 access_token，必要时匿名登录或刷新。

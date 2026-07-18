@@ -98,6 +98,41 @@ class SupabaseClient:
         )
         return self._to_session(result)
 
+    def get_user(self, access_token: str) -> dict:
+        """获取当前登录用户信息（用于判断是匿名还是已绑定邮箱）"""
+        return self._request("GET", f"{self.auth_url}/user", token=access_token) or {}
+
+    def update_user_email(self, access_token: str, email: str) -> dict:
+        """
+        给当前账号绑定邮箱。
+
+        匿名账号绑定邮箱后会升级为正式账号，原有数据（user_id）全部保留。
+        Supabase 会发一封确认邮件，用户点击链接后绑定才生效。
+        """
+        return self._request(
+            "PUT", f"{self.auth_url}/user", body={"email": email}, token=access_token
+        ) or {}
+
+    def send_email_otp(self, email: str) -> None:
+        """给邮箱发一封登录验证码（6 位数字）"""
+        self._request(
+            "POST",
+            f"{self.auth_url}/otp",
+            body={"email": email, "create_user": False},
+        )
+
+    def verify_email_otp(self, email: str, code: str) -> dict:
+        """
+        校验邮箱验证码，成功后返回该邮箱账号的会话。
+        用于在第二台设备上登录同一个账号。
+        """
+        result = self._request(
+            "POST",
+            f"{self.auth_url}/verify",
+            body={"email": email, "token": code, "type": "email"},
+        )
+        return self._to_session(result)
+
     @staticmethod
     def _to_session(result: dict) -> dict:
         """把 GoTrue 返回体收敛成我们自己的 session 结构"""

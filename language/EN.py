@@ -51,6 +51,10 @@ TRANSLATION = {
     "update_download_failed": "Download failed: {error}",
     "update_no_notes": "No detailed release notes provided for this version.",
 
+    # Account / device sync
+    "menu_account": "Account / Device Sync",
+    "account_title": "Account / Device Sync",
+
     # Sync status
     "sync_syncing": "Syncing...",
     "sync_synced": "Synced",

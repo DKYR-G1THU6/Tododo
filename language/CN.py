@@ -51,6 +51,10 @@ TRANSLATION = {
     "update_download_failed": "下载失败: {error}",
     "update_no_notes": "此版本未提供详细更新日志。",
 
+    # 账号 / 设备同步
+    "menu_account": "账号 / 设备同步",
+    "account_title": "账号 / 设备同步",
+
     # 同步状态
     "sync_syncing": "同步中...",
     "sync_synced": "已同步",
