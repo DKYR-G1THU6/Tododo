@@ -49,6 +49,13 @@ class TaskService:
         self.request_sync()
         return task_id
 
+    def add_voice_task(self, placeholder: str, audio_path: str) -> tuple:
+        """新建语音任务，返回 (task_id, uuid)"""
+        result = self.db.add_voice_task(placeholder, audio_path)
+        self.notify_update()
+        self.request_sync()
+        return result
+
     def delete_task(self, task_id: int) -> bool:
         """删除任务"""
         result = self.db.delete_task(task_id)

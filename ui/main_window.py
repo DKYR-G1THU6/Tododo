@@ -2,8 +2,8 @@
 主窗口
 """
 from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
-    QLabel, QLineEdit, QMenu, QApplication, QStackedWidget
+    QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
+    QLabel, QLineEdit, QMenu, QApplication, QStackedWidget, QMessageBox
 )
 from PyQt5.QtCore import (
     Qt, QRect, QPoint, QTimer, QEvent, pyqtSignal,
@@ -73,6 +73,8 @@ class MainWindow(QWidget):
         self.update_notify = True  # 启动时检查更新默认值
         self.sort_by_type = False  # 每日任务优先排序默认值
         self._update_worker = None  # 后台更新检查线程引用
+        self._voice_recorder = None  # 延迟创建，没装录音库时不影响其它功能
+        self._voice_workers = set()  # 持有上传线程引用，避免被 GC
         
         # 迷你模式状态
         self.is_mini_mode = False
@@ -90,6 +92,8 @@ class MainWindow(QWidget):
         self.tab_bar.tab_changed.connect(self.on_tab_changed)
         self.tab_bar.sort_clicked.connect(self.on_toggle_sort)
         self.task_input.task_added.connect(self.on_task_added)
+        self.task_input.voice_pressed.connect(self.on_voice_pressed)
+        self.task_input.voice_released.connect(self.on_voice_released)
         self.task_service.register_update_callback(self.refresh_views)
 
         # 同步状态信号（未接同步服务时跳过）
@@ -753,6 +757,55 @@ class MainWindow(QWidget):
             if self.sync_service is not None:
                 self.sync_service.request_sync()
         super().changeEvent(event)
+
+    # ============================
+    # 语音任务（按住说话）
+    # ============================
+
+    def on_voice_pressed(self):
+        """按下麦克风：开始录音"""
+        if self.sync_service is None:
+            return
+        try:
+            if self._voice_recorder is None:
+                from services.voice_service import VoiceRecorder
+                self._voice_recorder = VoiceRecorder()
+            self._voice_recorder.start()
+            self.task_input.voice_button.setText("●")
+        except Exception as e:
+            # 没装录音库、或没有麦克风设备
+            logger.warning(f"Failed to start recording: {e}")
+            self.task_input.voice_button.setText("🎤")
+            QMessageBox.warning(self, "无法录音", f"启动麦克风失败：\n{e}")
+
+    def on_voice_released(self):
+        """松开麦克风：停止录音，建任务，后台上传+转写"""
+        self.task_input.voice_button.setText("🎤")
+        if self._voice_recorder is None or not self._voice_recorder.is_recording:
+            return
+
+        try:
+            audio_path = self._voice_recorder.stop()
+        except Exception as e:
+            logger.warning(f"Failed to stop recording: {e}")
+            return
+
+        if audio_path is None:
+            return  # 太短或没录到内容
+
+        # 先本地落地，卡片立刻出现（离线也成立）
+        _, task_uuid = self.task_service.add_voice_task("🎤 正在转写…", str(audio_path))
+
+        from services.voice_service import VoiceUploadWorker
+        worker = VoiceUploadWorker(
+            self.task_service.db, self.sync_service.auth, self.sync_service.client,
+            task_uuid, audio_path, parent=self
+        )
+        worker.succeeded.connect(lambda _: self.sync_service.request_sync())
+        worker.failed.connect(lambda _uuid, err: logger.warning(f"Voice task failed: {err}"))
+        worker.finished.connect(lambda: self._voice_workers.discard(worker))
+        self._voice_workers.add(worker)
+        worker.start()
 
     # ============================
     # 账号 / 设备同步

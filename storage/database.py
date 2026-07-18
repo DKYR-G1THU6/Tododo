@@ -110,6 +110,64 @@ class Database:
 
         return task_id
 
+    def add_voice_task(self, placeholder: str, audio_path: str) -> tuple:
+        """
+        新建一条语音任务，返回 (task_id, uuid)。
+
+        先用占位标题落地，卡片立刻出现在列表里；录音上传+转写完成后，
+        服务端会把标题改成转写文字并同步回来。
+        """
+        today = datetime.now().strftime("%Y-%m-%d")
+        new_uuid = str(uuid.uuid4())
+
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute(f'''
+            INSERT INTO tasks (
+                uuid, title, status, created_date, task_type, dirty,
+                has_voice, audio_path, transcribe_status, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, 'one_time', 1, 1, ?, 'pending', {_NOW_MS}, {_NOW_MS})
+        ''', (new_uuid, placeholder, config.TASK_STATUS_TODO, today, audio_path))
+
+        conn.commit()
+        task_id = cursor.lastrowid
+        conn.close()
+
+        return task_id, new_uuid
+
+    def set_task_audio_url(self, task_uuid: str, audio_url: str) -> bool:
+        """录音上传完成后记下云端对象路径"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute(f'''
+            UPDATE tasks SET audio_url = ?, updated_at = {_NOW_MS}, dirty = 1
+            WHERE uuid = ?
+        ''', (audio_url, task_uuid))
+
+        conn.commit()
+        updated = cursor.rowcount > 0
+        conn.close()
+
+        return updated
+
+    def set_transcribe_status(self, task_uuid: str, status: str) -> bool:
+        """更新转写状态（失败时置 failed，界面据此提示）"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute(f'''
+            UPDATE tasks SET transcribe_status = ?, updated_at = {_NOW_MS}, dirty = 1
+            WHERE uuid = ?
+        ''', (status, task_uuid))
+
+        conn.commit()
+        updated = cursor.rowcount > 0
+        conn.close()
+
+        return updated
+
     def delete_task(self, task_id: int) -> bool:
         """删除任务（软删除：打墓碑标记，让删除可同步）"""
         conn = sqlite3.connect(self.db_path)

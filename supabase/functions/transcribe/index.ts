@@ -132,12 +132,17 @@ Deno.serve(async (req) => {
     // title 也一并写成转写文本：语音任务创建时只有占位标题，
     // 用户要的就是「说了什么，任务就叫什么」，两端都直接显示。
     const cleaned = (text ?? "").trim();
+
+    // 静音/杂音也会被转出个 "." 之类的东西。这种情况不该把任务标题改成标点，
+    // 而应标记失败并保留占位标题，让用户知道要重录。
+    const hasSpeech = cleaned.replace(/[\s.,;:!?'"，。、；：！？…·—\-]/g, "").length > 0;
+
     const patch: Record<string, unknown> = {
       transcript: cleaned,
-      transcribe_status: "done",
+      transcribe_status: hasSpeech ? "done" : "failed",
       updated_at: new Date().toISOString(),
     };
-    if (cleaned.length > 0) patch.title = cleaned;
+    if (hasSpeech) patch.title = cleaned;
 
     const { error: upErr } = await supabase.from("tasks").update(patch).eq("uuid", uuid);
     if (upErr) throw new Error(`db update failed: ${upErr.message}`);

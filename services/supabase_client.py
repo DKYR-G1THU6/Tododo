@@ -186,6 +186,62 @@ class SupabaseClient:
             extra_headers={"Prefer": "resolution=merge-duplicates,return=representation"},
         ) or []
 
+    # ============================
+    # Storage / Edge Function（语音用）
+    # ============================
+
+    def upload_storage_object(
+        self, access_token: str, bucket: str, path: str, data: bytes, content_type: str
+    ) -> None:
+        """
+        上传二进制对象到 Storage。
+
+        路径必须以 {user_id}/ 开头 —— Storage 的 RLS 策略就是按首段判断归属的。
+        走独立方法而不是 _request，因为这里发的是二进制而不是 JSON。
+        """
+        url = f"{self.url}/storage/v1/object/{bucket}/{path}"
+        headers = {
+            "apikey": self.anon_key,
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": content_type,
+            "x-upsert": "true",
+            "User-Agent": f"Tododo/{config.APP_VERSION}",
+        }
+        req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                resp.read()
+        except urllib.error.HTTPError as e:
+            detail = ""
+            try:
+                detail = e.read().decode("utf-8")
+            except Exception:
+                pass
+            raise SupabaseError(f"storage upload failed HTTP {e.code}: {detail}", status=e.code) from e
+        except urllib.error.URLError as e:
+            raise SupabaseError(f"storage upload network error: {e.reason}") from e
+
+    def create_signed_url(
+        self, access_token: str, bucket: str, path: str, expires_in: int = 3600
+    ) -> str:
+        """给私有桶里的对象生成临时可播放地址"""
+        result = self._request(
+            "POST",
+            f"{self.url}/storage/v1/object/sign/{bucket}/{path}",
+            body={"expiresIn": expires_in},
+            token=access_token,
+        ) or {}
+        signed = result.get("signedURL") or result.get("signedUrl")
+        if not signed:
+            raise SupabaseError(f"unexpected sign response: {result}")
+        return f"{self.url}/storage/v1{signed}"
+
+    def invoke_function(self, access_token: str, name: str, payload: dict) -> dict:
+        """调用 Edge Function（转写用）"""
+        return self._request(
+            "POST", f"{self.url}/functions/v1/{name}", body=payload, token=access_token, timeout=120
+        ) or {}
+
     def fetch_tasks_since(self, access_token: str, cursor: Optional[str] = None, limit: int = 1000) -> list:
         """
         增量拉取：取 updated_at 晚于 cursor 的行（cursor 为 RFC3339 UTC 字符串）。

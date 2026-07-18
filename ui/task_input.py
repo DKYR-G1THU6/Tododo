@@ -11,7 +11,10 @@ class TaskInputWidget(QWidget):
     
     # 信号：当用户提交新任务时 (title, task_type)
     task_added = pyqtSignal(str, str)
-    
+    # 语音按钮按下 / 松开（按住说话）
+    voice_pressed = pyqtSignal()
+    voice_released = pyqtSignal()
+
     def __init__(self):
         super().__init__()
         self.current_type = "daily"  # 默认每日任务
@@ -52,13 +55,23 @@ class TaskInputWidget(QWidget):
         input_layout.addStretch()
         input_layout.addWidget(self.type_button)
         
+        # 语音按钮（按住说话）
+        self.voice_button = QPushButton("🎤")
+        self.voice_button.setObjectName("voiceBtn")
+        self.voice_button.setCursor(Qt.PointingHandCursor)
+        self.voice_button.setToolTip("按住说话，松开自动转成文字")
+        self.voice_button.setFixedWidth(38)
+        self.voice_button.pressed.connect(self.voice_pressed.emit)
+        self.voice_button.released.connect(self.voice_released.emit)
+
         # 添加按钮
         self.add_button = QPushButton("Add")
         self.add_button.setObjectName("addBtn")
         self.add_button.setCursor(Qt.PointingHandCursor)
         self.add_button.clicked.connect(self.on_add_task)
-        
+
         layout.addWidget(self.input_field, 1)
+        layout.addWidget(self.voice_button)
         layout.addWidget(self.add_button)
         
         self.setLayout(layout)
