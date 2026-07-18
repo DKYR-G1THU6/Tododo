@@ -189,6 +189,17 @@ export async function markSynced(uuids: string[]): Promise<void> {
 }
 
 /**
+ * 物理清空本地所有任务。
+ *
+ * 仅用于「登录到另一个账号」：此时本地数据属于旧账号，必须清干净，
+ * 否则会被当成待推送内容混进新账号。清空后由同步层全量重新拉取。
+ */
+export async function clearAllTasks(): Promise<void> {
+  const database = await getDb();
+  await database.runAsync('DELETE FROM tasks');
+}
+
+/**
  * 把云端行合并进本地（LWW：仅当 remote.updated_at 更晚才覆盖）。
  * 传入的 updated_at / deleted_at 必须已归一化为本地毫秒格式。
  * 返回实际写入的行数。

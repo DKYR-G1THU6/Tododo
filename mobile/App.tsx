@@ -15,9 +15,11 @@ import {
   COLUMN_TITLES, SYNC_POLL_INTERVAL_MS, TASK_STATUSES, TYPE_COLORS, getNextStatus,
 } from './src/config';
 import {
-  addTask, deleteTask, getAllTasks, initDatabase, resetDailyTasks, updateTaskStatus,
+  addTask, clearAllTasks, deleteTask, getAllTasks, initDatabase, resetDailyTasks,
+  updateTaskStatus,
 } from './src/db/database';
-import { runSync, type SyncStatus } from './src/sync/syncEngine';
+import { resetSyncCursor, runSync, type SyncStatus } from './src/sync/syncEngine';
+import AccountScreen from './src/screens/AccountScreen';
 import type { Task, TaskStatus, TaskType } from './src/types';
 
 const SYNC_COLORS: Record<SyncStatus, string> = {
@@ -41,6 +43,7 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const [draft, setDraft] = useState('');
   const [draftType, setDraftType] = useState<TaskType>('daily');
+  const [accountOpen, setAccountOpen] = useState(false);
 
   const refresh = useCallback(async () => {
     setTasks(await getAllTasks());
@@ -95,6 +98,18 @@ export default function App() {
     void syncRef.current();
   };
 
+  /**
+   * 登录到了另一个账号：本机现有任务属于旧账号，必须清空并重置游标后全量重拉，
+   * 否则旧账号的任务会被当成待推送内容混进新账号。
+   */
+  const handleAccountSwitched = async () => {
+    await clearAllTasks();
+    await resetSyncCursor();
+    await refresh();
+    await syncRef.current();
+    await refresh();
+  };
+
   const handleDelete = (task: Task) => {
     Alert.alert('删除任务', `确定删除「${task.title}」？`, [
       { text: '取消', style: 'cancel' },
@@ -127,11 +142,22 @@ export default function App() {
       {/* 标题栏 */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Tododo</Text>
-        <Pressable onPress={() => void syncRef.current()} hitSlop={12} style={styles.syncTouch}>
-          <View style={[styles.syncDot, { backgroundColor: SYNC_COLORS[syncStatus] }]} />
-          <Text style={styles.syncLabel}>{SYNC_LABELS[syncStatus]}</Text>
-        </Pressable>
+        <View style={styles.headerRight}>
+          <Pressable onPress={() => void syncRef.current()} hitSlop={12} style={styles.syncTouch}>
+            <View style={[styles.syncDot, { backgroundColor: SYNC_COLORS[syncStatus] }]} />
+            <Text style={styles.syncLabel}>{SYNC_LABELS[syncStatus]}</Text>
+          </Pressable>
+          <Pressable onPress={() => setAccountOpen(true)} hitSlop={12} style={styles.accountBtn}>
+            <Text style={styles.accountBtnText}>账号</Text>
+          </Pressable>
+        </View>
       </View>
+
+      <AccountScreen
+        visible={accountOpen}
+        onClose={() => setAccountOpen(false)}
+        onAccountSwitched={handleAccountSwitched}
+      />
 
       {/* 三态标签 */}
       <View style={styles.tabs}>
@@ -217,6 +243,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20, paddingVertical: 14,
   },
   headerTitle: { fontSize: 22, fontWeight: '700', color: '#111827' },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  accountBtn: {
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 8, backgroundColor: '#eef0f3',
+  },
+  accountBtnText: { fontSize: 12, fontWeight: '600', color: '#4b5563' },
   syncTouch: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   syncDot: { width: 9, height: 9, borderRadius: 5 },
   syncLabel: { fontSize: 11, color: '#6b7280' },
