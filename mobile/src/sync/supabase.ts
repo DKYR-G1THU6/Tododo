@@ -104,6 +104,15 @@ export async function verifyLoginCode(email: string, code: string): Promise<bool
   return (data.user?.id ?? null) !== previous;
 }
 
+/**
+ * 退出登录。调用方随后必须清空本地数据与游标 —— 本地任务属于刚退出的账号，
+ * 留着会在下次匿名登录后被推到新账号里去。
+ */
+export async function signOut(): Promise<void> {
+  const { error } = await supabase.auth.signOut();
+  if (error) throw error;
+}
+
 /** 把 Supabase 的原始报错翻成人话 */
 export function friendlyAuthError(err: unknown): string {
   const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();

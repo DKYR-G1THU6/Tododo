@@ -31,7 +31,9 @@ SUPABASE_FUNCTIONS_URL = f"{SUPABASE_URL}/functions/v1"
 SUPABASE_VOICE_BUCKET = "voice"
 
 # 同步轮询间隔（秒）
-SYNC_POLL_INTERVAL = 30
+# 取 10 秒：30 秒时在另一台设备上改完要盯着等很久，体感像是"没同步"。
+# 窗口重新获得焦点时还会额外立刻同步一次（见 MainWindow.changeEvent）。
+SYNC_POLL_INTERVAL = 10
 
 # 数据存储路径
 APP_DATA_DIR = Path(os.path.expandvars(r"%APPDATA%\Tododo"))

@@ -742,6 +742,18 @@ class MainWindow(QWidget):
         self._set_sync_indicator("#9ca3af", t.get("sync_offline", "Offline"))
         logger.debug(f"Sync failed: {message}")
 
+    def changeEvent(self, event):
+        """
+        窗口重新获得焦点时立刻同步一次。
+
+        用户常见操作是「在手机上改完，切回电脑看」，这时不该还要等轮询。
+        request_sync 自带合并，重复调用是安全的。
+        """
+        if event.type() == QEvent.ActivationChange and self.isActiveWindow():
+            if self.sync_service is not None:
+                self.sync_service.request_sync()
+        super().changeEvent(event)
+
     # ============================
     # 账号 / 设备同步
     # ============================

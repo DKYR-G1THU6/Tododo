@@ -6,7 +6,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, FlatList, Pressable, SafeAreaView, StyleSheet,
+  ActivityIndicator, Alert, AppState, FlatList, Pressable, SafeAreaView, StyleSheet,
   Text, TextInput, View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
@@ -16,10 +16,13 @@ import {
 } from './src/config';
 import {
   addTask, clearAllTasks, deleteTask, getAllTasks, initDatabase, resetDailyTasks,
-  updateTaskStatus,
+  updateTaskStatus, updateTaskType,
 } from './src/db/database';
-import { resetSyncCursor, runSync, type SyncStatus } from './src/sync/syncEngine';
+import {
+  resetSyncCursor, runSync, subscribeToRemoteChanges, type SyncStatus,
+} from './src/sync/syncEngine';
 import AccountScreen from './src/screens/AccountScreen';
+import SettingsScreen from './src/screens/SettingsScreen';
 import type { Task, TaskStatus, TaskType } from './src/types';
 
 const SYNC_COLORS: Record<SyncStatus, string> = {
@@ -44,12 +47,18 @@ export default function App() {
   const [draft, setDraft] = useState('');
   const [draftType, setDraftType] = useState<TaskType>('daily');
   const [accountOpen, setAccountOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const refresh = useCallback(async () => {
     setTasks(await getAllTasks());
   }, []);
 
+  // 防重入：Realtime 推送、轮询、前台恢复可能几乎同时触发同步
+  const syncInFlight = useRef(false);
+
   const sync = useCallback(async () => {
+    if (syncInFlight.current) return;
+    syncInFlight.current = true;
     setSyncStatus('syncing');
     try {
       const { pulled } = await runSync();
@@ -59,6 +68,8 @@ export default function App() {
     } catch {
       // 离线是常态，静默降级即可，本地功能照常可用
       setSyncStatus('offline');
+    } finally {
+      syncInFlight.current = false;
     }
   }, [refresh]);
 
@@ -68,6 +79,7 @@ export default function App() {
 
   useEffect(() => {
     let timer: ReturnType<typeof setInterval> | undefined;
+    let unsubscribeRemote: (() => void) | undefined;
 
     (async () => {
       await initDatabase();
@@ -75,11 +87,23 @@ export default function App() {
       await refresh();
       setReady(true);
       void syncRef.current();
+
+      // 云端有变更就立刻同步（另一台设备改完这边马上能看到）
+      unsubscribeRemote = subscribeToRemoteChanges(() => void syncRef.current());
+
+      // 轮询兜底，防止推送断线后一直不一致
       timer = setInterval(() => void syncRef.current(), SYNC_POLL_INTERVAL_MS);
     })();
 
+    // 从后台切回前台时立刻同步一次
+    const appStateSub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void syncRef.current();
+    });
+
     return () => {
       if (timer) clearInterval(timer);
+      if (unsubscribeRemote) unsubscribeRemote();
+      appStateSub.remove();
     };
   }, [refresh]);
 
@@ -110,7 +134,14 @@ export default function App() {
     await refresh();
   };
 
-  const handleDelete = (task: Task) => {
+  const handleToggleType = async (task: Task) => {
+    const next: TaskType = task.task_type === 'daily' ? 'one_time' : 'daily';
+    await updateTaskType(task.task_id, next);
+    await refresh();
+    void syncRef.current();
+  };
+
+  const confirmDelete = (task: Task) => {
     Alert.alert('删除任务', `确定删除「${task.title}」？`, [
       { text: '取消', style: 'cancel' },
       {
@@ -122,6 +153,18 @@ export default function App() {
           void syncRef.current();
         },
       },
+    ]);
+  };
+
+  /** 长按弹操作菜单：改类型 / 删除 */
+  const handleLongPress = (task: Task) => {
+    Alert.alert(task.title, '选择操作', [
+      {
+        text: task.task_type === 'daily' ? '改为一次性任务' : '改为每日任务',
+        onPress: () => void handleToggleType(task),
+      },
+      { text: '删除任务', style: 'destructive', onPress: () => confirmDelete(task) },
+      { text: '取消', style: 'cancel' },
     ]);
   };
 
@@ -147,11 +190,22 @@ export default function App() {
             <View style={[styles.syncDot, { backgroundColor: SYNC_COLORS[syncStatus] }]} />
             <Text style={styles.syncLabel}>{SYNC_LABELS[syncStatus]}</Text>
           </Pressable>
-          <Pressable onPress={() => setAccountOpen(true)} hitSlop={12} style={styles.accountBtn}>
-            <Text style={styles.accountBtnText}>账号</Text>
+          <Pressable onPress={() => setSettingsOpen(true)} hitSlop={12} style={styles.accountBtn}>
+            <Text style={styles.accountBtnText}>设置</Text>
           </Pressable>
         </View>
       </View>
+
+      <SettingsScreen
+        visible={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onOpenAccount={() => {
+          setSettingsOpen(false);
+          setAccountOpen(true);
+        }}
+        onSyncNow={() => void syncRef.current()}
+        onSignedOut={handleAccountSwitched}
+      />
 
       <AccountScreen
         visible={accountOpen}
@@ -188,7 +242,7 @@ export default function App() {
           <Pressable
             style={styles.card}
             onPress={() => void handleAdvance(item)}
-            onLongPress={() => handleDelete(item)}
+            onLongPress={() => handleLongPress(item)}
           >
             <View style={[styles.typeBar, { backgroundColor: TYPE_COLORS[item.task_type] }]} />
             <View style={styles.cardBody}>
@@ -207,7 +261,7 @@ export default function App() {
         )}
       />
 
-      <Text style={styles.hint}>点击卡片切换状态 · 长按删除</Text>
+      <Text style={styles.hint}>点击卡片切换状态 · 长按改类型或删除</Text>
 
       {/* 输入区 */}
       <View style={styles.inputRow}>

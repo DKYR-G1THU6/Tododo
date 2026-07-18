@@ -12,7 +12,9 @@ export const SUPABASE_VOICE_BUCKET = 'voice';
 export const DATABASE_NAME = 'tasks.db';
 
 // 同步轮询间隔（毫秒）
-export const SYNC_POLL_INTERVAL_MS = 30_000;
+// 取 10 秒作为兜底：主要靠 Realtime 推送和「切回前台立刻同步」，
+// 轮询只是在推送断线时保证最终一致。
+export const SYNC_POLL_INTERVAL_MS = 10_000;
 
 // AsyncStorage 里存增量拉取高水位游标的键
 export const SYNC_CURSOR_KEY = 'tododo.sync.pullCursor';

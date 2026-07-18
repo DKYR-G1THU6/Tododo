@@ -79,3 +79,24 @@ export async function runSync(): Promise<SyncResult> {
 export async function resetSyncCursor(): Promise<void> {
   await AsyncStorage.removeItem(SYNC_CURSOR_KEY);
 }
+
+/**
+ * 订阅云端 tasks 表的变更，收到推送就触发一次同步。
+ *
+ * 这是「另一台设备改完，这边立刻看到」的关键 —— 光靠轮询会有最多一个轮询周期的延迟。
+ * 返回取消订阅的函数。
+ */
+export function subscribeToRemoteChanges(onChange: () => void): () => void {
+  const channel = supabase
+    .channel('tasks-sync')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'tasks' },
+      () => onChange()
+    )
+    .subscribe();
+
+  return () => {
+    void supabase.removeChannel(channel);
+  };
+}
