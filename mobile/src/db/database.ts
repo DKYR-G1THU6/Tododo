@@ -81,6 +81,43 @@ export async function addTask(title: string, taskType: TaskType = 'daily'): Prom
   return uuid;
 }
 
+/**
+ * 新建一条语音任务。
+ *
+ * 先用占位标题落地，让卡片立刻出现在列表里；录音上传+转写完成后，
+ * 服务端会把标题改成转写出来的文字并同步回来。
+ */
+export async function addVoiceTask(placeholder: string, audioPath: string): Promise<string> {
+  const database = await getDb();
+  const uuid = Crypto.randomUUID();
+  await database.runAsync(
+    `INSERT INTO tasks (
+       uuid, title, status, created_date, task_type, dirty,
+       has_voice, audio_path, transcribe_status, created_at, updated_at
+     ) VALUES (?, ?, ?, ?, 'one_time', 1, 1, ?, 'pending', ${NOW_MS}, ${NOW_MS})`,
+    [uuid, placeholder, TASK_STATUS_TODO, localDateString(), audioPath]
+  );
+  return uuid;
+}
+
+/** 录音上传完成后记下云端对象路径 */
+export async function setTaskAudioUrl(uuid: string, audioUrl: string): Promise<void> {
+  const database = await getDb();
+  await database.runAsync(
+    `UPDATE tasks SET audio_url = ?, updated_at = ${NOW_MS}, dirty = 1 WHERE uuid = ?`,
+    [audioUrl, uuid]
+  );
+}
+
+/** 更新转写状态（失败时置 failed，界面可据此提示重试） */
+export async function setTranscribeStatus(uuid: string, status: string): Promise<void> {
+  const database = await getDb();
+  await database.runAsync(
+    `UPDATE tasks SET transcribe_status = ?, updated_at = ${NOW_MS}, dirty = 1 WHERE uuid = ?`,
+    [status, uuid]
+  );
+}
+
 /** 软删除：打墓碑标记，让删除能同步到其它设备 */
 export async function deleteTask(taskId: number): Promise<void> {
   const database = await getDb();

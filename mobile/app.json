@@ -20,7 +20,13 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Tododo 需要使用麦克风来录制语音任务。"
+        }
+      ]
     ],
     "extra": {
       "eas": {

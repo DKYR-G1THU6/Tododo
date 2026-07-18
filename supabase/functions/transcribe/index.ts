@@ -24,6 +24,39 @@ function json(body: unknown, status = 200) {
   });
 }
 
+/**
+ * 取用于建 client 的 API key。
+ *
+ * SUPABASE_ANON_KEY 已被标记 deprecated，新项目改用 SUPABASE_PUBLISHABLE_KEYS
+ * （一个 JSON 字典/数组）。这里优先读新的、回退到旧的，两种项目都能跑。
+ */
+function resolveApiKey(): string {
+  const raw = Deno.env.get("SUPABASE_PUBLISHABLE_KEYS");
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      const candidates: unknown[] = Array.isArray(parsed) ? parsed : Object.values(parsed);
+      for (const c of candidates) {
+        if (typeof c === "string" && c.length > 0) return c;
+        // 也可能是 { name, api_key } 这类对象
+        if (c && typeof c === "object") {
+          for (const v of Object.values(c as Record<string, unknown>)) {
+            if (typeof v === "string" && v.startsWith("sb_publishable_")) return v;
+          }
+        }
+      }
+    } catch {
+      // 解析失败就当它本身就是一个 key
+      if (raw.startsWith("sb_")) return raw;
+    }
+  }
+
+  const legacy = Deno.env.get("SUPABASE_ANON_KEY");
+  if (legacy) return legacy;
+
+  throw new Error("no publishable/anon key available in the function environment");
+}
+
 // audio_url 约定为 voice 桶内对象路径 {user_id}/{uuid}.{ext}；容错去掉可能的前缀
 function toObjectPath(audioUrl: string): string {
   let p = audioUrl.trim();
@@ -56,11 +89,16 @@ Deno.serve(async (req) => {
   if (!uuid || !audioUrl) return json({ error: "uuid and audio_url are required" }, 400);
 
   // 以调用者身份建 client（受 RLS 约束）
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_ANON_KEY")!,
-    { global: { headers: { Authorization: authHeader } } },
-  );
+  let supabase;
+  try {
+    supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      resolveApiKey(),
+      { global: { headers: { Authorization: authHeader } } },
+    );
+  } catch (e) {
+    return json({ error: String(e) }, 500);
+  }
 
   const objectPath = toObjectPath(audioUrl);
 
@@ -87,14 +125,17 @@ Deno.serve(async (req) => {
     const { text } = await groqResp.json();
 
     // 3) 写回任务行（更新 updated_at 让转写结果通过同步下发到两端）
-    const { error: upErr } = await supabase
-      .from("tasks")
-      .update({
-        transcript: text,
-        transcribe_status: "done",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("uuid", uuid);
+    // title 也一并写成转写文本：语音任务创建时只有占位标题，
+    // 用户要的就是「说了什么，任务就叫什么」，两端都直接显示。
+    const cleaned = (text ?? "").trim();
+    const patch: Record<string, unknown> = {
+      transcript: cleaned,
+      transcribe_status: "done",
+      updated_at: new Date().toISOString(),
+    };
+    if (cleaned.length > 0) patch.title = cleaned;
+
+    const { error: upErr } = await supabase.from("tasks").update(patch).eq("uuid", uuid);
     if (upErr) throw new Error(`db update failed: ${upErr.message}`);
 
     return json({ ok: true, uuid, transcript: text });

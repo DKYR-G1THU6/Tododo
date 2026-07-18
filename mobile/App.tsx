@@ -10,14 +10,18 @@ import {
   Text, TextInput, View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import {
+  RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, useAudioRecorder,
+} from 'expo-audio';
 
 import {
   COLUMN_TITLES, SYNC_POLL_INTERVAL_MS, TASK_STATUSES, TYPE_COLORS, getNextStatus,
 } from './src/config';
 import {
-  addTask, clearAllTasks, deleteTask, getAllTasks, initDatabase, resetDailyTasks,
-  updateTaskStatus, updateTaskType,
+  addTask, addVoiceTask, clearAllTasks, deleteTask, getAllTasks, initDatabase,
+  resetDailyTasks, setTaskAudioUrl, setTranscribeStatus, updateTaskStatus, updateTaskType,
 } from './src/db/database';
+import { requestTranscription, uploadRecording } from './src/voice/voiceApi';
 import {
   resetSyncCursor, runSync, subscribeToRemoteChanges, type SyncStatus,
 } from './src/sync/syncEngine';
@@ -48,6 +52,8 @@ export default function App() {
   const [draftType, setDraftType] = useState<TaskType>('daily');
   const [accountOpen, setAccountOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
   const refresh = useCallback(async () => {
     setTasks(await getAllTasks());
@@ -106,6 +112,58 @@ export default function App() {
       appStateSub.remove();
     };
   }, [refresh]);
+
+  // ============================
+  // 语音任务：按住说话 -> 本地落地 -> 上传 -> 服务端转写
+  // ============================
+
+  const startRecording = async () => {
+    try {
+      const { granted } = await requestRecordingPermissionsAsync();
+      if (!granted) {
+        Alert.alert('需要麦克风权限', '请在系统设置里允许 Tododo 使用麦克风。');
+        return;
+      }
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      await recorder.prepareToRecordAsync();
+      recorder.record();
+      setRecording(true);
+    } catch (e) {
+      Alert.alert('无法开始录音', String(e));
+    }
+  };
+
+  const stopRecording = async () => {
+    if (!recording) return;
+    setRecording(false);
+
+    try {
+      await recorder.stop();
+    } catch {
+      return;
+    }
+    const uri = recorder.uri;
+    if (!uri) return;
+
+    // 先落地本地，卡片立刻出现（离线也成立）
+    const uuid = await addVoiceTask('🎤 正在转写…', uri);
+    await refresh();
+
+    // 上传和转写要联网，放后台做，失败不影响任务已经存在
+    void (async () => {
+      try {
+        const objectPath = await uploadRecording(uri, uuid);
+        await setTaskAudioUrl(uuid, objectPath);
+        await syncRef.current();                       // 先把任务+audio_url 推上云
+        await requestTranscription(uuid, objectPath);  // 服务端转写并回写 title
+        await syncRef.current();                       // 拉回转写结果
+        await refresh();
+      } catch {
+        await setTranscribeStatus(uuid, 'failed');
+        await refresh();
+      }
+    })();
+  };
 
   const handleAdd = async () => {
     const title = draft.trim();
@@ -254,6 +312,9 @@ export default function App() {
               </Text>
               <Text style={styles.cardMeta}>
                 {item.task_type === 'daily' ? '每日' : '一次性'}
+                {item.has_voice ? ' · 🎤' : ''}
+                {item.transcribe_status === 'pending' ? ' 转写中…' : ''}
+                {item.transcribe_status === 'failed' ? ' 转写失败' : ''}
                 {item.completed_date ? ` · 完成于 ${item.completed_date}` : ''}
               </Text>
             </View>
@@ -284,6 +345,17 @@ export default function App() {
           <Text style={styles.addBtnText}>+</Text>
         </Pressable>
       </View>
+
+      {/* 按住说话 */}
+      <Pressable
+        style={[styles.voiceBtn, recording && styles.voiceBtnActive]}
+        onPressIn={() => void startRecording()}
+        onPressOut={() => void stopRecording()}
+      >
+        <Text style={[styles.voiceBtnText, recording && styles.voiceBtnTextActive]}>
+          {recording ? '● 松开结束' : '🎤 按住说话'}
+        </Text>
+      </Pressable>
     </SafeAreaView>
   );
 }
@@ -348,4 +420,12 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   addBtnText: { color: '#ffffff', fontSize: 22, lineHeight: 26, fontWeight: '600' },
+
+  voiceBtn: {
+    marginHorizontal: 16, marginBottom: 14, paddingVertical: 14,
+    borderRadius: 12, backgroundColor: '#eef0f3', alignItems: 'center',
+  },
+  voiceBtnActive: { backgroundColor: '#dc2626' },
+  voiceBtnText: { fontSize: 14, fontWeight: '700', color: '#4b5563' },
+  voiceBtnTextActive: { color: '#ffffff' },
 });
