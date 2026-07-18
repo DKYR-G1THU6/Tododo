@@ -67,8 +67,8 @@ class AccountDialog(QDialog):
 
         layout.addWidget(self._separator())
 
-        # —— 绑定邮箱 ——
-        layout.addWidget(QLabel("绑定邮箱（把本机账号升级为正式账号，数据保留）"))
+        # —— ① 绑定邮箱 ——
+        layout.addWidget(QLabel("① 绑定邮箱（把本机账号升级为正式账号，数据全部保留）"))
         bind_row = QHBoxLayout()
         self.bind_email_input = QLineEdit()
         self.bind_email_input.setPlaceholderText("you@example.com")
@@ -79,30 +79,40 @@ class AccountDialog(QDialog):
         bind_row.addWidget(self.bind_btn)
         layout.addLayout(bind_row)
 
+        # —— ② 设置密码 ——
+        layout.addWidget(QLabel("② 设置登录密码（之后手机用「邮箱 + 密码」登录，不需要收邮件）"))
+        pwd_row = QHBoxLayout()
+        self.new_password_input = QLineEdit()
+        self.new_password_input.setPlaceholderText("至少 6 位")
+        self.new_password_input.setEchoMode(QLineEdit.Password)
+        self.set_pwd_btn = QPushButton("设置密码")
+        self.set_pwd_btn.setCursor(Qt.PointingHandCursor)
+        self.set_pwd_btn.clicked.connect(self.on_set_password)
+        pwd_row.addWidget(self.new_password_input, 1)
+        pwd_row.addWidget(self.set_pwd_btn)
+        layout.addLayout(pwd_row)
+
         layout.addWidget(self._separator())
 
-        # —— 用邮箱登录（切换到已有账号）——
-        layout.addWidget(QLabel("用邮箱登录（登录另一台设备上已绑定的账号）"))
-        code_row1 = QHBoxLayout()
+        # —— 在这台设备上登录已有账号 ——
+        layout.addWidget(QLabel("在这台设备上登录已有账号（会切换身份并重新同步）"))
+        login_row1 = QHBoxLayout()
         self.login_email_input = QLineEdit()
         self.login_email_input.setPlaceholderText("you@example.com")
-        self.send_code_btn = QPushButton("发送验证码")
-        self.send_code_btn.setCursor(Qt.PointingHandCursor)
-        self.send_code_btn.clicked.connect(self.on_send_code)
-        code_row1.addWidget(self.login_email_input, 1)
-        code_row1.addWidget(self.send_code_btn)
-        layout.addLayout(code_row1)
+        login_row1.addWidget(self.login_email_input, 1)
+        layout.addLayout(login_row1)
 
-        code_row2 = QHBoxLayout()
-        self.code_input = QLineEdit()
-        self.code_input.setPlaceholderText("邮件里的 6 位验证码")
-        self.code_input.setMaxLength(10)
+        login_row2 = QHBoxLayout()
+        self.login_password_input = QLineEdit()
+        self.login_password_input.setPlaceholderText("密码")
+        self.login_password_input.setEchoMode(QLineEdit.Password)
+        self.login_password_input.returnPressed.connect(self.on_password_login)
         self.login_btn = QPushButton("登录")
         self.login_btn.setCursor(Qt.PointingHandCursor)
-        self.login_btn.clicked.connect(self.on_verify_code)
-        code_row2.addWidget(self.code_input, 1)
-        code_row2.addWidget(self.login_btn)
-        layout.addLayout(code_row2)
+        self.login_btn.clicked.connect(self.on_password_login)
+        login_row2.addWidget(self.login_password_input, 1)
+        login_row2.addWidget(self.login_btn)
+        layout.addLayout(login_row2)
 
         # 提示信息
         self.message_label = QLabel("")
@@ -154,31 +164,37 @@ class AccountDialog(QDialog):
             ),
         )
 
-    def on_send_code(self):
-        email = self.login_email_input.text().strip()
-        if not email or "@" not in email:
-            self._message("请输入有效的邮箱地址", error=True)
+    def on_set_password(self):
+        password = self.new_password_input.text()
+        if len(password) < 6:
+            self._message("密码至少 6 位", error=True)
             return
-        self._message("正在发送验证码...")
+        self._message("正在设置密码...")
         self._run(
-            self.auth_service.send_login_code, email,
-            on_ok=lambda _: self._message(f"验证码已发到 {email}，请查收后填入下方。"),
+            self.auth_service.set_password, password,
+            on_ok=lambda _: (
+                self.new_password_input.clear(),
+                self._message(
+                    "密码设置成功。\n"
+                    "现在到手机上用这个邮箱 + 这个密码登录，就能看到这里的全部任务。"
+                ),
+            ),
         )
 
-    def on_verify_code(self):
+    def on_password_login(self):
         email = self.login_email_input.text().strip()
-        code = self.code_input.text().strip()
-        if not email or not code:
-            self._message("请填写邮箱和验证码", error=True)
+        password = self.login_password_input.text()
+        if not email or not password:
+            self._message("请填写邮箱和密码", error=True)
             return
         self._message("正在登录...")
         self._run(
-            self.auth_service.sign_in_with_code, email, code,
+            self.auth_service.sign_in_with_password, email, password,
             on_ok=self._on_signed_in,
         )
 
     def _on_signed_in(self, switched):
-        self.code_input.clear()
+        self.login_password_input.clear()
         self.load_status()
         if switched:
             self._message("登录成功，已切换账号。正在清空本机旧数据并重新同步...")
@@ -217,18 +233,20 @@ class AccountDialog(QDialog):
         lowered = msg.lower()
         if "network error" in lowered:
             return "连不上服务器，请检查网络后重试。"
-        if "otp_expired" in lowered or "expired" in lowered:
-            return "验证码已过期，请重新发送。"
-        if "invalid" in lowered and "token" in lowered:
-            return "验证码不正确，请检查后重试。"
+        if "invalid login credentials" in lowered or "invalid_credentials" in lowered:
+            return "邮箱或密码不正确。"
+        if "weak_password" in lowered or "at least 6" in lowered:
+            return "密码太短，至少需要 6 位。"
+        if "same_password" in lowered:
+            return "新密码不能和旧密码相同。"
         if "email_exists" in lowered or "already been registered" in lowered:
-            return "该邮箱已被注册。请改用下方「用邮箱登录」。"
+            return "该邮箱已被注册。请改用下方登录。"
         if "rate limit" in lowered or "429" in lowered:
-            return "发送太频繁，请过几分钟再试。"
+            return "操作太频繁，请过几分钟再试。"
         return f"操作失败：{msg}"
 
     def _set_busy(self, busy: bool):
-        for btn in (self.bind_btn, self.send_code_btn, self.login_btn):
+        for btn in (self.bind_btn, self.set_pwd_btn, self.login_btn):
             btn.setEnabled(not busy)
 
     def _message(self, text: str, error: bool = False):

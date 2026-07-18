@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 
 import {
-  bindEmail, friendlyAuthError, getAccountInfo, sendLoginCode, verifyLoginCode,
+  bindEmail, friendlyAuthError, getAccountInfo, setPassword, signInWithPassword,
   type AccountInfo,
 } from '../sync/supabase';
 
@@ -24,7 +24,7 @@ interface Props {
 export default function AccountScreen({ visible, onClose, onAccountSwitched }: Props) {
   const [info, setInfo] = useState<AccountInfo | null>(null);
   const [email, setEmail] = useState('');
-  const [code, setCode] = useState('');
+  const [password, setPasswordInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [isError, setIsError] = useState(false);
@@ -53,22 +53,13 @@ export default function AccountScreen({ visible, onClose, onAccountSwitched }: P
     }
   };
 
-  const handleSendCode = () =>
+  const handleLogin = () =>
     run(async () => {
       const target = email.trim();
-      if (!target.includes('@')) return say('请输入有效的邮箱地址', true);
-      await sendLoginCode(target);
-      say(`验证码已发到 ${target}，请查收后填入下方。`);
-    });
+      if (!target || !password) return say('请填写邮箱和密码', true);
 
-  const handleVerify = () =>
-    run(async () => {
-      const target = email.trim();
-      const token = code.trim();
-      if (!target || !token) return say('请填写邮箱和验证码', true);
-
-      const switched = await verifyLoginCode(target, token);
-      setCode('');
+      const switched = await signInWithPassword(target, password);
+      setPasswordInput('');
       setInfo(await getAccountInfo());
 
       if (switched) {
@@ -86,6 +77,14 @@ export default function AccountScreen({ visible, onClose, onAccountSwitched }: P
       if (!target.includes('@')) return say('请输入有效的邮箱地址', true);
       await bindEmail(target);
       say(`确认邮件已发到 ${target}，点击邮件里的链接即可完成绑定。`);
+    });
+
+  const handleSetPassword = () =>
+    run(async () => {
+      if (password.length < 6) return say('密码至少 6 位', true);
+      await setPassword(password);
+      setPasswordInput('');
+      say('密码设置成功。现在可以在电脑端用这个邮箱 + 密码登录了。');
     });
 
   return (
@@ -109,7 +108,7 @@ export default function AccountScreen({ visible, onClose, onAccountSwitched }: P
             {info?.email ? null : (
               <Text style={styles.tip}>
                 这台手机现在是独立的匿名账号，看不到电脑上的任务。
-                用电脑端已绑定的邮箱登录即可合并。
+                用电脑端绑定的邮箱和密码登录即可合并。
               </Text>
             )}
 
@@ -125,28 +124,20 @@ export default function AccountScreen({ visible, onClose, onAccountSwitched }: P
               autoCorrect={false}
             />
 
-            <Pressable
-              style={[styles.btn, styles.btnPrimary, busy && styles.btnDisabled]}
-              onPress={handleSendCode}
-              disabled={busy}
-            >
-              <Text style={styles.btnPrimaryText}>发送验证码</Text>
-            </Pressable>
-
-            <Text style={styles.label}>验证码</Text>
+            <Text style={styles.label}>密码</Text>
             <TextInput
               style={styles.input}
-              value={code}
-              onChangeText={setCode}
-              placeholder="邮件里的 6 位数字"
+              value={password}
+              onChangeText={setPasswordInput}
+              placeholder="在电脑端设置的密码"
               placeholderTextColor="#9ca3af"
-              keyboardType="number-pad"
-              maxLength={10}
+              secureTextEntry
+              autoCapitalize="none"
             />
 
             <Pressable
               style={[styles.btn, styles.btnPrimary, busy && styles.btnDisabled]}
-              onPress={handleVerify}
+              onPress={handleLogin}
               disabled={busy}
             >
               <Text style={styles.btnPrimaryText}>登录并同步</Text>
@@ -155,8 +146,8 @@ export default function AccountScreen({ visible, onClose, onAccountSwitched }: P
             <View style={styles.divider} />
 
             <Text style={styles.tip}>
-              如果你想反过来，把「这台手机」的账号设为主账号，可以在这里给它绑定邮箱，
-              然后在电脑端用同一邮箱登录。
+              反过来，如果你想把「这台手机」的账号设为主账号：先绑定上面的邮箱，
+              再给它设一个密码，然后在电脑端用同样的邮箱+密码登录。
             </Text>
             <Pressable
               style={[styles.btn, styles.btnGhost, busy && styles.btnDisabled]}
@@ -164,6 +155,13 @@ export default function AccountScreen({ visible, onClose, onAccountSwitched }: P
               disabled={busy}
             >
               <Text style={styles.btnGhostText}>把上面的邮箱绑定到本机账号</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.btn, styles.btnGhost, busy && styles.btnDisabled]}
+              onPress={handleSetPassword}
+              disabled={busy}
+            >
+              <Text style={styles.btnGhostText}>把上面的密码设为本机账号密码</Text>
             </Pressable>
 
             {busy ? <ActivityIndicator style={styles.spinner} color="#6366f1" /> : null}

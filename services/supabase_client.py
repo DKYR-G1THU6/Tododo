@@ -113,6 +113,27 @@ class SupabaseClient:
             "PUT", f"{self.auth_url}/user", body={"email": email}, token=access_token
         ) or {}
 
+    def set_password(self, access_token: str, password: str) -> dict:
+        """
+        给当前账号设置登录密码。
+
+        设了密码后，另一台设备就能用「邮箱 + 密码」登录同一账号，
+        整个过程不需要发任何邮件（Supabase 内置邮件限 2 封/小时，且
+        改邮件模板还要求先配自定义 SMTP）。
+        """
+        return self._request(
+            "PUT", f"{self.auth_url}/user", body={"password": password}, token=access_token
+        ) or {}
+
+    def sign_in_with_password(self, email: str, password: str) -> dict:
+        """用邮箱 + 密码登录，返回会话。不发邮件。"""
+        result = self._request(
+            "POST",
+            f"{self.auth_url}/token?grant_type=password",
+            body={"email": email, "password": password},
+        )
+        return self._to_session(result)
+
     def send_email_otp(self, email: str) -> None:
         """给邮箱发一封登录验证码（6 位数字）"""
         self._request(

@@ -63,6 +63,23 @@ export async function bindEmail(email: string): Promise<void> {
   if (error) throw error;
 }
 
+/** 给本机账号设置登录密码 */
+export async function setPassword(password: string): Promise<void> {
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) throw error;
+}
+
+/**
+ * 用邮箱 + 密码登录。不发任何邮件，因此不受 Supabase 内置邮件 2封/小时 的限制。
+ * 返回 true 表示切换到了另一个 user —— 调用方必须清空本地库和同步游标。
+ */
+export async function signInWithPassword(email: string, password: string): Promise<boolean> {
+  const previous = (await supabase.auth.getSession()).data.session?.user.id ?? null;
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) throw error;
+  return (data.user?.id ?? null) !== previous;
+}
+
 /** 发送登录验证码。shouldCreateUser=false：只允许登录已存在的账号，避免手滑建出新账号 */
 export async function sendLoginCode(email: string): Promise<void> {
   const { error } = await supabase.auth.signInWithOtp({
@@ -91,12 +108,12 @@ export async function verifyLoginCode(email: string, code: string): Promise<bool
 export function friendlyAuthError(err: unknown): string {
   const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
   if (msg.includes('network') || msg.includes('fetch')) return '连不上服务器，请检查网络后重试。';
-  if (msg.includes('expired')) return '验证码已过期，请重新发送。';
-  if (msg.includes('invalid') && msg.includes('token')) return '验证码不正确，请检查后重试。';
-  if (msg.includes('should_create_user') || msg.includes('signups not allowed') || msg.includes('user not found'))
-    return '这个邮箱还没有账号。请先在电脑端「绑定邮箱」。';
-  if (msg.includes('rate') || msg.includes('429')) return '发送太频繁，请过几分钟再试。';
+  if (msg.includes('invalid login credentials') || msg.includes('invalid_credentials'))
+    return '邮箱或密码不正确。请确认已在电脑端「设置密码」。';
+  if (msg.includes('weak_password') || msg.includes('at least 6')) return '密码太短，至少需要 6 位。';
+  if (msg.includes('email not confirmed')) return '该邮箱还没确认，请先到邮箱点确认链接。';
+  if (msg.includes('rate') || msg.includes('429')) return '操作太频繁，请过几分钟再试。';
   if (msg.includes('email_exists') || msg.includes('already been registered'))
-    return '该邮箱已被注册，请改用「用邮箱登录」。';
+    return '该邮箱已被注册，请直接用邮箱+密码登录。';
   return `操作失败：${err instanceof Error ? err.message : String(err)}`;
 }

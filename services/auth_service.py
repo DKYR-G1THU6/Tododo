@@ -105,6 +105,26 @@ class AuthService:
         self.client.update_user_email(token, email)
         logger.info("Email binding requested; confirmation mail sent")
 
+    def set_password(self, password: str):
+        """给当前账号设置密码，之后另一台设备可用邮箱+密码登录（不发邮件）"""
+        token = self.ensure_session()
+        self.client.set_password(token, password)
+        logger.info("Account password set")
+
+    def sign_in_with_password(self, email: str, password: str) -> bool:
+        """
+        用邮箱+密码登录。
+
+        返回 True 表示登录到了**另一个** user —— 调用方必须清空本地库和同步游标，
+        否则旧账号的数据会被推到新账号里去。
+        """
+        previous_user_id = self.user_id
+        session = self.client.sign_in_with_password(email, password)
+        self._save_session(session)
+        switched = session.get("user_id") != previous_user_id
+        logger.info(f"Signed in with password; user switched={switched}")
+        return switched
+
     def send_login_code(self, email: str):
         """给邮箱发登录验证码（用于在另一台设备上登录同一账号）"""
         self.client.send_email_otp(email)
