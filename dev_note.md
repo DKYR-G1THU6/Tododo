@@ -118,6 +118,41 @@ npx eas-cli build --profile development -p android
 
 ---
 
+## ⏳ 待部署 / 待办
+
+### 待部署：`transcribe` Edge Function
+
+本地代码已改但**云端还是旧版**。不影响现在使用，等下次一起部署即可。
+
+改了两处：
+1. **空转写保护** —— 录到无声/杂音时 Whisper 会返回个 `"."`，旧版会把任务标题改成 `.`；
+   新版遇到「没有实际语音内容」会标记 `transcribe_status='failed'` 并保留占位标题，提示重录。
+2. **模型可配置** —— 读取可选 secret `GROQ_MODEL`，不设时默认 `whisper-large-v3`。
+   想试 `whisper-large-v3-turbo` 时改 secret 即可，不用再改代码。
+
+部署方式：控制台 → Edge Functions → `transcribe` → 全选替换成
+`supabase/functions/transcribe/index.ts` 的内容 → Deploy。
+
+### 打正式 APK 之前必须先做
+
+| # | 事项 | 为什么有先后顺序 |
+|---|---|---|
+| 1 | **装 `expo-updates`** | ⚠️ 必须在打正式包**之前**。它是原生模块，漏了的话以后想做 OTA 静默更新还得再重新构建一次 |
+| 2 | UI / 功能修改 | 趁没打正式包一次改完，避免打了又重打 |
+| 3 | 墓碑清理（`pg_cron` 定期物理删除超期的 `deleted=1` 行） | 目前删掉的内容会永久保留 |
+| 4 | Supabase Site URL 改成能正常打开的页面 | 否则朋友绑定邮箱后会看到 `localhost:3000` 连接失败的报错页 |
+| 5 | 自定义 SMTP（Resend / Brevo） | 密码找回要发邮件；内置邮件只有 2 封/小时 |
+| 6 | `npx eas-cli build --profile preview -p android` | 出独立 APK，脱离电脑也能跑 |
+
+### 手机版以后怎么更新
+
+| 改动类型 | 更新方式 | 用户感知 |
+|---|---|---|
+| JS / 界面 / 逻辑（绝大多数） | **EAS Update（OTA）** | 下次打开自动更新，无感 |
+| 新增原生模块 / 升级 SDK | 重新构建 APK，需重新安装 | 需要提示用户去下载 |
+
+---
+
 ## 数据安全
 
 - **删除是软删除**：内容不会真的消失，只是标记 `deleted=1`。所以**别把密钥之类的东西写进任务标题**。
