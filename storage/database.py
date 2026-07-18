@@ -10,6 +10,11 @@ import config
 from models.task import Task
 
 
+# 毫秒精度的 UTC 时间戳表达式。
+# 不用 CURRENT_TIMESTAMP：它只有秒精度，同一秒内两台设备的改动时间戳会完全相同，
+# LWW 比较时 remote > local 为假，更新会被静默丢弃。取到毫秒才能正确定序。
+_NOW_MS = "strftime('%Y-%m-%d %H:%M:%f','now')"
+
 # 所有 SELECT 统一使用的列顺序，与 _row_to_task 一一对应
 _TASK_COLUMNS = (
     "task_id, uuid, title, status, created_date, completed_date, task_type, "
@@ -54,8 +59,8 @@ class Database:
                 audio_url TEXT,
                 transcript TEXT,
                 transcribe_status TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT (strftime('%Y-%m-%d %H:%M:%f','now')),
+                updated_at TIMESTAMP DEFAULT (strftime('%Y-%m-%d %H:%M:%f','now'))
             )
         ''')
 
@@ -92,9 +97,11 @@ class Database:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        cursor.execute('''
-            INSERT INTO tasks (uuid, title, status, created_date, task_type, dirty)
-            VALUES (?, ?, ?, ?, ?, 1)
+        # 显式写时间戳而不依赖列默认值：从 v2 升级上来的库，列默认值仍是秒精度的
+        # CURRENT_TIMESTAMP（ALTER TABLE 不会改已有列的默认值）。
+        cursor.execute(f'''
+            INSERT INTO tasks (uuid, title, status, created_date, task_type, dirty, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, 1, {_NOW_MS}, {_NOW_MS})
         ''', (new_uuid, title, status, today, task_type))
 
         conn.commit()
@@ -108,9 +115,9 @@ class Database:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        cursor.execute('''
+        cursor.execute(f'''
             UPDATE tasks
-            SET deleted = 1, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, dirty = 1
+            SET deleted = 1, deleted_at = {_NOW_MS}, updated_at = {_NOW_MS}, dirty = 1
             WHERE task_id = ? AND deleted = 0
         ''', (task_id,))
         conn.commit()
@@ -129,9 +136,9 @@ class Database:
         if new_status == config.TASK_STATUS_DONE:
             completed_date = datetime.now().strftime("%Y-%m-%d")
 
-        cursor.execute('''
+        cursor.execute(f'''
             UPDATE tasks
-            SET status = ?, completed_date = ?, updated_at = CURRENT_TIMESTAMP, dirty = 1
+            SET status = ?, completed_date = ?, updated_at = {_NOW_MS}, dirty = 1
             WHERE task_id = ?
         ''', (new_status, completed_date, task_id))
 
@@ -146,9 +153,9 @@ class Database:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        cursor.execute('''
+        cursor.execute(f'''
             UPDATE tasks
-            SET title = ?, updated_at = CURRENT_TIMESTAMP, dirty = 1
+            SET title = ?, updated_at = {_NOW_MS}, dirty = 1
             WHERE task_id = ?
         ''', (new_title, task_id))
 
@@ -165,9 +172,9 @@ class Database:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        cursor.execute('''
+        cursor.execute(f'''
             UPDATE tasks
-            SET task_type = ?, updated_at = CURRENT_TIMESTAMP, dirty = 1
+            SET task_type = ?, updated_at = {_NOW_MS}, dirty = 1
             WHERE task_id = ?
         ''', (new_type, task_id))
 
@@ -193,6 +200,21 @@ class Database:
         if row:
             return self._row_to_task(row)
         return None
+
+    def get_task_by_uuid(self, task_uuid: str) -> Optional[Task]:
+        """按全局 uuid 获取任务（不过滤 deleted，供同步使用）"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute(f'''
+            SELECT {_TASK_COLUMNS}
+            FROM tasks WHERE uuid = ?
+        ''', (task_uuid,))
+
+        row = cursor.fetchone()
+        conn.close()
+
+        return self._row_to_task(row) if row else None
 
     def get_all_tasks(self) -> List[Task]:
         """获取所有要在当前主界面显示的任务（包括所有每日任务，以及未完成的一次性任务，和今天完成的一次性任务）"""
@@ -293,9 +315,9 @@ class Database:
 
         # 更新这些任务为 To Do
         for (task_id,) in tasks_to_reset:
-            cursor.execute('''
+            cursor.execute(f'''
                 UPDATE tasks
-                SET status = ?, completed_date = NULL, updated_at = CURRENT_TIMESTAMP, dirty = 1
+                SET status = ?, completed_date = NULL, updated_at = {_NOW_MS}, dirty = 1
                 WHERE task_id = ?
             ''', (config.TASK_STATUS_TODO, task_id))
 

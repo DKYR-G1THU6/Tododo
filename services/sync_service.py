@@ -50,9 +50,9 @@ def iso_to_local(ts: Optional[str]) -> Optional[str]:
         return raw
     if dt.tzinfo is not None:
         dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
-    if dt.microsecond:
-        return dt.strftime("%Y-%m-%d %H:%M:%S.%f")
-    return dt.strftime("%Y-%m-%d %H:%M:%S")
+    # 统一到毫秒，与本地 SQLite 的 strftime('%Y-%m-%d %H:%M:%f','now') 格式一致，
+    # 保证两边的时间戳字符串可以直接按字典序比较
+    return f"{dt.strftime('%Y-%m-%d %H:%M:%S')}.{dt.microsecond // 1000:03d}"
 
 
 class SyncState:
