@@ -49,5 +49,10 @@ TRANSLATION = {
     "update_download_speed": "Speed: {speed} | Progress: {percent}%",
     "update_download_success": "Download complete! Restart to apply update.",
     "update_download_failed": "Download failed: {error}",
-    "update_no_notes": "No detailed release notes provided for this version."
+    "update_no_notes": "No detailed release notes provided for this version.",
+
+    # Sync status
+    "sync_syncing": "Syncing...",
+    "sync_synced": "Synced",
+    "sync_offline": "Offline — changes will sync once you're back online"
 }

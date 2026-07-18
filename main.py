@@ -17,6 +17,9 @@ from services.task_service import TaskService
 from services.notification import NotificationService
 from services.scheduler import SchedulerService
 from services.boot_notifier import BootNotifierService
+from services.supabase_client import SupabaseClient
+from services.auth_service import AuthService
+from services.sync_service import SyncService
 from ui.main_window import MainWindow
 
 
@@ -65,10 +68,21 @@ def main():
         
         # 开机提醒服务
         boot_notifier_service = BootNotifierService(task_service, notification_service)
-        
+
+        # 同步服务（构造失败也不能影响 app 启动，本地功能必须照常可用）
+        sync_service = None
+        try:
+            supabase_client = SupabaseClient()
+            auth_service = AuthService(supabase_client)
+            sync_service = SyncService(database, auth_service, supabase_client)
+            task_service.set_sync_service(sync_service)
+            logger.info("Sync service initialized")
+        except Exception as e:
+            logger.warning(f"Sync unavailable, running local-only: {e}")
+
         # 创建主窗口
         logger.info("Creating main window...")
-        main_window = MainWindow(task_service, notification_service)
+        main_window = MainWindow(task_service, notification_service, sync_service)
         main_window.show()
         
         # 启动服务
@@ -77,6 +91,11 @@ def main():
         
         # 延迟 1.5 秒触发开机提醒通知，避开启动时的 CPU 占用以提升启动响应速度
         QTimer.singleShot(1500, boot_notifier_service.notify_on_boot)
+
+        # 延迟启动同步轮询，同样是为了不拖慢启动（联网都在后台线程里做）
+        if sync_service is not None:
+            QTimer.singleShot(800, sync_service.start_auto_sync)
+            app.aboutToQuit.connect(sync_service.shutdown)
         
         logger.info("Application started successfully")
         

@@ -196,6 +196,14 @@ class SyncService(QObject):
     def stop_auto_sync(self):
         self._timer.stop()
 
+    def shutdown(self, wait_ms: int = 3000):
+        """退出前调用：停掉轮询并等待正在跑的同步收尾，避免线程被强行销毁"""
+        self._pending = False
+        self._timer.stop()
+        if self._worker is not None and self._worker.isRunning():
+            logger.info("Waiting for in-flight sync to finish before exit...")
+            self._worker.wait(wait_ms)
+
     def request_sync(self):
         """请求同步；若已有同步在跑，则记下待办，结束后再补一轮"""
         if self._worker is not None and self._worker.isRunning():

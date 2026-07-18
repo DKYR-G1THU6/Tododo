@@ -49,5 +49,10 @@ TRANSLATION = {
     "update_download_speed": "速度: {speed} | 进度: {percent}%",
     "update_download_success": "下载完成！请点击立即重启以应用更新。",
     "update_download_failed": "下载失败: {error}",
-    "update_no_notes": "此版本未提供详细更新日志。"
+    "update_no_notes": "此版本未提供详细更新日志。",
+
+    # 同步状态
+    "sync_syncing": "同步中...",
+    "sync_synced": "已同步",
+    "sync_offline": "离线 — 改动会在恢复网络后自动同步"
 }

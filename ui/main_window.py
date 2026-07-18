@@ -57,10 +57,12 @@ class SlimStackedWidget(QStackedWidget):
 class MainWindow(QWidget):
     """应用主窗口"""
     
-    def __init__(self, task_service: TaskService, notification_service: NotificationService):
+    def __init__(self, task_service: TaskService, notification_service: NotificationService,
+                 sync_service=None):
         super().__init__()
         self.task_service = task_service
         self.notification_service = notification_service
+        self.sync_service = sync_service  # 可选：未接同步时界面不显示同步状态
         self.autostart_service = AutoStartService()
         
         # 配置文件
@@ -89,6 +91,12 @@ class MainWindow(QWidget):
         self.tab_bar.sort_clicked.connect(self.on_toggle_sort)
         self.task_input.task_added.connect(self.on_task_added)
         self.task_service.register_update_callback(self.refresh_views)
+
+        # 同步状态信号（未接同步服务时跳过）
+        if self.sync_service is not None:
+            self.sync_service.sync_started.connect(self.on_sync_started)
+            self.sync_service.sync_succeeded.connect(self.on_sync_succeeded)
+            self.sync_service.sync_failed.connect(self.on_sync_failed)
         
         # 连接各列视图的信号
         for view in self.column_views.values():
@@ -232,6 +240,13 @@ class MainWindow(QWidget):
         title_layout.addWidget(self.title_label, 1)
         title_layout.addWidget(self.title_edit_container, 1)
         
+        # 同步状态指示（小圆点；未接同步服务时保持隐藏）
+        self.sync_indicator = QLabel("●")
+        self.sync_indicator.setObjectName("syncIndicator")
+        self.sync_indicator.setFixedWidth(14)
+        self.sync_indicator.setAlignment(Qt.AlignCenter)
+        self.sync_indicator.hide()
+
         # 右侧按钮布局
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(6)
@@ -271,6 +286,7 @@ class MainWindow(QWidget):
         btn_layout.addWidget(self.close_button)
         
         layout.addWidget(self.title_container, 1)
+        layout.addWidget(self.sync_indicator)
         layout.addLayout(btn_layout)
         
         title_bar.setLayout(layout)
@@ -693,6 +709,34 @@ class MainWindow(QWidget):
         else:
             self.stacked_widget.setCurrentIndex(0)
     
+    # ============================
+    # 同步状态指示
+    # ============================
+
+    def _set_sync_indicator(self, color: str, tooltip: str):
+        """更新同步状态圆点的颜色与悬停提示"""
+        self.sync_indicator.setStyleSheet(f"color: {color};")
+        self.sync_indicator.setToolTip(tooltip)
+        self.sync_indicator.show()
+
+    def on_sync_started(self):
+        """同步开始：黄色"""
+        t = config.TRANSLATIONS[self.language]
+        self._set_sync_indicator("#f59e0b", t.get("sync_syncing", "Syncing..."))
+
+    def on_sync_succeeded(self, pushed: int, pulled: int):
+        """同步成功：绿色；若从云端拉到了新内容则刷新界面"""
+        t = config.TRANSLATIONS[self.language]
+        self._set_sync_indicator("#10b981", t.get("sync_synced", "Synced"))
+        if pulled > 0:
+            self.refresh_views()
+
+    def on_sync_failed(self, message: str):
+        """同步失败（多半是离线）：灰色，静默降级不打扰用户"""
+        t = config.TRANSLATIONS[self.language]
+        self._set_sync_indicator("#9ca3af", t.get("sync_offline", "Offline"))
+        logger.debug(f"Sync failed: {message}")
+
     def refresh_views(self):
         """刷新所有视图"""
         preserve_scroll = getattr(self, '_preserve_scroll_on_next_refresh', False)

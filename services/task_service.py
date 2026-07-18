@@ -14,7 +14,17 @@ class TaskService:
         """初始化任务服务"""
         self.db = db
         self.update_callbacks: List[Callable] = []  # UI 更新回调
-    
+        self.sync_service = None  # 由 main.py 注入；不注入时同步调用全是 no-op
+
+    def set_sync_service(self, sync_service):
+        """注入同步服务（可选），保持业务层不硬依赖网络层"""
+        self.sync_service = sync_service
+
+    def request_sync(self):
+        """本地有写入后请求一次同步；未接同步服务时静默跳过"""
+        if self.sync_service is not None:
+            self.sync_service.request_sync()
+
     def register_update_callback(self, callback: Callable):
         """注册 UI 更新回调"""
         self.update_callbacks.append(callback)
@@ -36,37 +46,42 @@ class TaskService:
         """添加新任务"""
         task_id = self.db.add_task(title, config.TASK_STATUS_TODO, task_type)
         self.notify_update()
+        self.request_sync()
         return task_id
-    
+
     def delete_task(self, task_id: int) -> bool:
         """删除任务"""
         result = self.db.delete_task(task_id)
         if result:
             self.notify_update()
+            self.request_sync()
         return result
-    
+
     def update_task_status(self, task_id: int, new_status: str) -> bool:
         """更新任务状态"""
         if new_status not in config.TASK_STATUSES:
             return False
-        
+
         result = self.db.update_task_status(task_id, new_status)
         if result:
             self.notify_update()
+            self.request_sync()
         return result
-    
+
     def update_task_title(self, task_id: int, new_title: str) -> bool:
         """更新任务标题"""
         result = self.db.update_task_title(task_id, new_title)
         if result:
             self.notify_update()
+            self.request_sync()
         return result
-        
+
     def update_task_type(self, task_id: int, new_type: str) -> bool:
         """更新任务类型"""
         result = self.db.update_task_type(task_id, new_type)
         if result:
             self.notify_update()
+            self.request_sync()
         return result
     
     def get_next_status(self, current_status: str) -> str:
@@ -96,6 +111,7 @@ class TaskService:
         reset_count = self.db.reset_daily_tasks()
         if reset_count > 0:
             self.notify_update()
+            self.request_sync()
         return reset_count
 
     def get_completed_one_time_tasks(self) -> List[Task]:
