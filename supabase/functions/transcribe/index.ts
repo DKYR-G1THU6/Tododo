@@ -9,7 +9,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const GROQ_URL = "https://api.groq.com/openai/v1/audio/transcriptions";
-const GROQ_MODEL = "whisper-large-v3";
+
+// 默认 whisper-large-v3：待办都是几秒的短句，turbo 的速度优势体感不到，
+// 而中英混说正是 turbo 退化最明显的地方，转错了还要手动改标题。
+// 想对比 whisper-large-v3-turbo 时，在 Edge Function Secrets 里加 GROQ_MODEL 即可，不用改代码。
+const GROQ_MODEL = Deno.env.get("GROQ_MODEL") ?? "whisper-large-v3";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
